@@ -47,21 +47,85 @@ npm install
 
 ## [Unreleased]
 
+---
+
+## [0.8.6] - 2026-10-01
+
+### Security
+
+- **Out-of-Contract Authorization Overhaul**: บังคับใช้นโยบาย Authorization Matrix ตาม `/roles` สำหรับงานนอกสัญญา ("งานนอกสัญญา") ในทุกเลเยอร์ — Route, Database/API, Data Query และ UI
+- **404 Not Found vs 403 Decision**: กำหนดให้การเข้าถึงทรัพยากรหรือเส้นทางงานนอกสัญญาโดยผู้ใช้ที่ไม่มีสิทธิ์ ส่งคืน **404 Not Found** (ไม่ใช่ 403 Forbidden) เพื่อป้องกัน Information Disclosure เนื่องจากการตอบ 403 เป็นการยืนยันการมีอยู่ของทรัพยากรแก่ผู้ไม่ได้รับอนุญาต
+- **Server-Side Route Guard**: แปลง `/public/report-ooc` เป็น Server Component ที่ทำงาน Authoritative บน Server ก่อนเรนเดอร์ข้อมูลใดๆ — หากยังไม่ล็อกอินจะ redirect ไป `/login?returnTo=...` หากไม่มีสิทธิ์จะส่งคืน 404 ทันที พร้อมประกาศ `dynamic = 'force-dynamic'` และ `robots: { index: false, follow: false }`
+- **Database Row-Level Filtering**: กรองข้อมูลงานนอกสัญญาออกจาก `GET /jobs/list`, `GET /jobs/:id`, `GET /public/jobs/status/:ticketNo`, `GET /public/jobs/status-by-phone`, PDF Reports และ File Proxy โดยผู้ใช้ที่ไม่มีสิทธิ์จะไม่ได้รับข้อมูลหรือตัวเลขนับรวมข้าม Network
+- **API Submission Gating**: ป้องกันการส่ง `isOutOfContract: true` ผ่าน `POST /public/jobs` โดยตรวจสอบสิทธิ์ `menu.outOfContract` / `job.classifyDoc.outOfContract` จาก JWT Bearer token หากไม่มีสิทธิ์จะปฏิเสธด้วย `ForbiddenException` ทันที
+
+### Fixed
+
+- **Next.js allowedDevOrigins Configuration**: กำหนด `allowedDevOrigins` ใน `next.config.mjs` โดยตรวจจับ IP/interface ของเครื่อง (รวม LAN IP `192.168.202.53`) และ `localhost` โดยอัตโนมัติ เพื่อป้องกันคำเตือน Cross-origin request detected ไปยัง `/_next/*`
+- **GlitchTip Tunnel Circuit Breaker with Exponential Backoff**: ปรับปรุง GlitchTip monitoring tunnel (`/monitoring`) ให้ใช้ Exponential Backoff (30s → 60s → 120s → สูงสุด 5 นาที) พร้อมระบบตัดการบันทึก log ซ้ำซ้อนเมื่อ upstream ออฟไลน์ต่อเนื่อง ไม่ให้เกิด warning รบกวน และคงการตอบกลับ 202 Accepted แบบ Fast-drop ไว้อย่างถูกต้อง
+- **Conditional Navigation Link**: แถบนำทาง `SiteHeader.tsx` จะเรนเดอร์ลิงก์ "งานนอกสัญญา" เฉพาะเมื่อ `can(user, PERMISSIONS.OOC_VIEW)` เป็นจริงเท่านั้น โดยจะไม่ปล่อย Markup ใดๆ ออกสู่ DOM หากไม่มีสิทธิ์
+- **Navigation Active State**: แก้ไขการคำนวณ Active Class ให้เป็นไดนามิกตาม Pathname จริง ไม่ติดสถานะ Active ค้าง และผูก `aria-current="page"`
+- **Accessibility Defects (WCAG 2.1 AA)**: กำหนด `aria-label="งานนอกสัญญา"` และ `sr-only` ข้อความบนมือถือ, ปรับขนาด Touch Target ให้ได้ขนาดอย่างน้อย 44×44px ทุก Breakpoint, เพิ่ม Focus-Visible Ring (Contrast ≥ 3:1), และเคารพ `prefers-reduced-motion`
+
+### Changed
+
+- **Path Recommendation & Canonical Route**: เพิ่มเส้นทาง `/dashboard/report-ooc` เป็นเส้นทางหลักสำหรับงานนอกสัญญาภายในระบบ เพื่อแก้ไข Design Smell ของการมี Restricted Page อยู่ภายใต้ `/public/`
+- **Centralized Typed Permissions Module**: รวมศูนย์การตรวจสอบสิทธิ์ใน `frontend/src/lib/auth/permissions.ts` พร้อมฟังก์ชัน `can()` และ `assertCan()` ปราศจาก `any` และบันทึก Security Audit Log ที่ระดับ WARN เมื่อพบความพยายามเข้าถึงที่ไม่มีสิทธิ์
+
+---
+
+## [0.8.3] - 2026-10-01
+
 ### Added
 
+- แยกหมายเลขใบรับแจ้ง (`requestTicketNo`) ถาวรจากหมายเลขเอกสารทางการ (`ticketNo`):
+  - สร้าง `requestTicketNo` ทันทีเมื่อผู้ใช้ส่งแจ้งปัญหา (`RQ-CM-YYYYXXXX` ในสัญญา, `RQ-OOC-YYYYXXXX` นอกสัญญา) โดยไม่ถูกเขียนทับ
+  - หมายเลขเอกสารทางการ (`ticketNo`) เริ่มต้นเป็น `null` และจะถูกสร้างเมื่อผ่านการจำแนกเอกสาร (`classifyDoc`) เท่านั้น (`CM-SHF-YYYY-XXXX` ในสัญญา, `OOC-YYYY-XXXX` นอกสัญญา)
+- หน้าแจ้งปัญหานอกสัญญาเฉพาะเจ้าหน้าที่ (`/public/report-ooc`): รองรับการแจ้งงานนอกสัญญาพร้อม Guard ตรวจสอบสิทธิ์ (STAFF, ADMIN, SUPERVISOR) และป้ายกำกับสีส้มชัดเจน
+- เมนูนำทาง "แจ้งงานนอกสัญญา" ใน `SiteHeader` สำหรับเจ้าหน้าที่และผู้ดูแลระบบ
+- คอลัมน์ `เลขรับแจ้ง` ในการส่งออก CSV จากหน้ารายการงาน
+
+### Changed
+
+- อัปเดตการค้นหาในหน้ารายการงาน (`JobsList`) และหน้าติดตามสถานะ (`/public/status`) ให้ค้นหาได้ทั้งเลขรับแจ้ง (`requestTicketNo`) และเลขเอกสาร (`ticketNo`)
+- ปรับปรุงการแสดงผลหมายเลขใบงานในทุกหน้า (JobsList, รายละเอียดงาน, ไทม์ไลน์, การแจ้งเตือน, แม่แบบ PDF) ให้แสดงเลขเอกสารเป็นหลักคู่กับเลขรับแจ้งอย่างชัดเจน
+- ปรับปรุงกล่องข้อความจำแนกประเภทเอกสาร (`JobClassifyDocDialog`): แก้ไขเลย์เอาต์ footer หลุดขอบ, เพิ่มโครงสร้าง 3 ส่วน (header/body/footer) ปักหมุด footer ไม่หลุดจอ, รองรับคีย์บอร์ด roving tabindex (ปุ่มลูกศร/Home/End/Space/Enter), เพิ่มสถานะ checked ชัดเจน (ขอบ 2px + ไอคอน CheckCircle2), ป้ายกำกับปุ่มและพรีวิวเลขระบุสัญญาชัดเจนสำหรับ irreversible action, ป้องกัน double submission พร้อม spinner และ inline error alert, เพิ่มปุ่มคัดลอกเลขรับแจ้งเดิมพร้อม aria-live, และปรับใช้ semantic design tokens พร้อม touch target ≥44px
+
+### Fixed
+
+- ปรับปรุงการเข้าถึงหน้าแจ้งงานนอกสัญญา (`/public/report-ooc`):
+  - คืนปุ่มเมนู "งานนอกสัญญา" ใน `SiteHeader` โดยกรองการแสดงผลตามสิทธิ์ `menu.outOfContract` หรือบทบาทเจ้าหน้าที่ (STAFF/ADMIN/SUPERVISOR) และซ่อนสำหรับผู้ใช้ทั่วไป (USER)
+  - แก้ไขปัญหา direct URL access ถูก redirect ไปยัง `/dashboard`: ปรับ `DashboardLayoutShell` ให้จำกัดการตรวจสิทธิ์และ redirect เฉพาะเส้นทาง `/dashboard/**` เท่านั้น โดยไม่แทรกแซงหรือ redirect เส้นทางฟอร์มสาธารณะ (`/public/report-ooc`) ที่มี `ReportOocGuard` ควบคุมอยู่แล้ว
+  - แก้ไข React runtime error `Cannot read properties of undefined (reading 'startTime')`: เพิ่มโมดูล `safePerformance` ในการดักและกรอง performance entries ที่ไม่สมบูรณ์จาก PerformanceObserver / Web Vitals พร้อม global error guard
+  - แก้ไข 504 Gateway Timeout และ request retry loop ใน GlitchTip monitoring tunnel (`/monitoring`): เพิ่ม circuit breaker 30 วินาที และตอบกลับด้วย HTTP 202 Accepted ทันทีเมื่อ upstream ออฟไลน์ ป้องกัน console error และไม่รบกวนการเปลี่ยนหน้าของระบบ
+
+---
+
+## [0.7.6] - 2026-10-01
+
+### Added
+
+- ปุ่ม「จำแนกเอกสาร」ในการ์ดสถานะปัจจุบัน (`/dashboard/jobs/[id]`): แสดงปุ่มใน flex container ด้านล่างข้อความเตือนรอผู้รับผิดชอบตั้งแต่สถานะ PENDING เป็นต้นไป ควบคุมด้วยสิทธิ์ `job.classifyDoc`, `job.classifyDoc.contract`, `job.classifyDoc.outOfContract` พร้อมซ่อนปุ่มเมื่อจำแนกแล้ว และปลดล็อก Backend ให้จำแนกเอกสารได้ตั้งแต่สถานะ PENDING / IN_PROGRESS / RESOLVED
 - Sidebar เดสกท็อปย่อ–ขยายได้ (icon-rail) ใน `DashboardLayoutShell` — จำสถานะใน `localStorage` (`dtrs-sidebar-collapsed`); มือถือคง drawer เดิม
 
 ### Fixed
 
+- GlitchTip ingest tunnel (`/monitoring`): กำหนด fetch timeout 5 วินาที (`AbortSignal.timeout(5_000)`) ป้องกันค้างและคืน 502 ช้า (10–27 วินาที) เมื่อเครือข่ายมี latency สูง
+- User avatar proxy (`/user-images/:id`): กำหนด fetch timeout 8 วินาที (`AbortSignal.timeout(8_000)`) ป้องกันค้างและคืน 502 ช้า (28–40 วินาที) เมื่อ backend ยังไม่พร้อม
+- Header (`SiteHeader`): แก้ aspect-ratio โลโก้ กสทช. (`NBTC.png`) จาก 28x28 เป็นขนาดจริง 960x1265 พร้อม `objectFit: "contain"` ป้องกันภาพผิดสัดส่วนและ Next.js console warning
 - Frontend `next build`: บังคับ `NODE_ENV=production` ในสคริปต์ build และเลิกแนะนำตั้ง `NODE_ENV=development` ใน `.env` — กันพังตอน prerender `/404` (`Html` / `_document`)
 - `/public/report` + `/public/status`: ไอคอนนำหน้าในช่องเบอร์/เลขที่ใบไม่ทับ placeholder และมองเห็นใน light mode — `.form-input-glass.has-leading-icon` + `z-10` บนไอคอน (พื้น input ทึบบัง SVG ที่อยู่ใต้)
+- `JobsList` (ทุกแท็บสถานะ): แก้ปัญหาคอลัมน์ซ้อนทับกันจาก `table-fixed` บนจอแคบ — เพิ่ม `<colgroup>` กำหนดความกว้างทุกคอลัมน์ชัดเจน, เพิ่ม `min-w` (1450px / 1850px) ให้ตารางเลื่อนแนวนอนผ่าน container `overflow-x-auto`, และใส่ `max-w-0` + `truncate` + `title` tooltip ป้องกันข้อความยาวดันเซลล์ข้างเคียง
+- ระบบแจ้งซ่อมและอัปโหลดรูปภาพ (`/public/jobs` & MinIO): แก้ปัญหา connection timeout (`connect ETIMEDOUT 192.168.0.71:9000`) และ 500 error เมื่อแจ้งซ่อมพร้อมแนบรูปภาพ — เพิ่ม fallback client ไปยัง endpoint สำรองอัตโนมัติ, กำหนด timeout 5 วินาที (`MINIO_TIMEOUT_MS`), แยก try/catch สำหรับรูปภาพไม่ให้ล้มเลิกการสร้าง Job ที่บันทึกสำเร็จแล้ว, และแปลง raw socket/network error บน frontend ให้เป็นข้อความแจ้งเตือนภาษาไทยที่เข้าใจง่าย
 
 ### Changed
 
+- รายงานพิมพ์/PDF (`JobMaintenancePdfTemplate`): ปรับ label「วันที่แจ้งซ่อม」เป็น「วันที่ได้รับแจ้งซ่อม」และปรับ caption ใต้บล็อคลายเซ็นผู้แจ้งจาก「ผู้แจ้งเหตุขัดข้อง」เป็น「ผู้แจ้งเหตุขัดข้อง / ผู้ใช้งาน」
+
+- เลขที่ใบแจ้งซ่อมเริ่มต้น (Reference No.): เปลี่ยนจากรหัส hex 8 ตัวสุ่ม เป็นรูปแบบทางการเรียงลำดับ `RQ-CM-YYYYXXXX` (เช่น `RQ-CM-20260001`) โดยนับลำดับรายปีผ่าน `DocSequence` แบบ atomic transaction พร้อม fallback และปรับตารางแสดงผลแดชบอร์ดให้รองรับ
 - รายงานพิมพ์/PDF: ปรับหัวข้อฟิลด์ (เหตุขัดข้อง, วิธีการแก้ไขและผลทดสอบ, วันที่ดำเนินการแล้วเสร็จ, สถานะการแก้ไข), ลบเวลาแจ้งซ่อม/เวลาที่แก้ไข, บล็อคลายเซ็นแสดงชื่อใต้ลายเซ็น, และวาง label ยาวแบบ stack; ค่าเริ่มต้น「สถานะการแก้ไข」เป็น「ใช้งานได้ปกติ」เมื่อไม่มี `systemStatus`
 - `/public/report`: เปลี่ยน label/hint/placeholder จาก「อาการที่พบ」เป็น「เหตุขัดข้อง」
 - `/public/status`: เปลี่ยน label รายละเอียดผู้ซ่อมจาก「วิธีการแก้ไข」เป็น「วิธีการแก้ไขและผลทดสอบ」
-- `JobsList` (`/dashboard/all`): แก้คอลัมน์「รายละเอียดปัญหา」/「สถานะ」ทับกันจาก `table-fixed` — กำหนดความกว้างชัด + min-width ให้เลื่อนแนวนอน
 
 ---
 
