@@ -183,9 +183,17 @@ function JobProxiedImage({
   );
 }
 
-function FieldCell({ label, value }: { label: string; value: string }) {
+function FieldCell({
+  label,
+  value,
+  rowSpan,
+}: {
+  label: string;
+  value: string;
+  rowSpan?: number;
+}) {
   return (
-    <td style={cell}>
+    <td style={cell} rowSpan={rowSpan}>
       <span style={pdfFieldLabel}>{label}: </span>
       {value}
     </td>
@@ -373,34 +381,28 @@ export function JobMaintenancePdfTemplate({
             <tbody>
               <tr>
                 <FieldCell
-                  label="เลขที่ใบแจ้งซ่อม"
-                  value={
-                    job.ticketNo
-                      ? job.requestTicketNo
-                        ? `${job.ticketNo} (เลขรับแจ้ง: ${job.requestTicketNo})`
-                        : job.ticketNo
-                      : job.requestTicketNo || "–"
-                  }
+                  label="เลขที่ใบซ่อม"
+                  value={job.ticketNo || job.requestTicketNo || "–"}
                 />
                 <FieldCell
                   label="วันที่ได้รับแจ้งซ่อม"
                   value={fmtDate(reportDt)}
+                  rowSpan={2}
                 />
               </tr>
               <tr>
                 <FieldCell label="ชื่อสถานี" value={job.location || "–"} />
-                <FieldCell
-                  label="วันที่ดำเนินการแล้วเสร็จ"
-                  value={fmtDate(fixDt)}
-                />
               </tr>
               <tr>
                 <FieldCell label="ตำบล" value={job.subdistrict || "–"} />
-                <td style={cell}>&nbsp;</td>
+                <FieldCell
+                  label="วันที่ดำเนินการแล้วเสร็จ"
+                  value={fmtDate(fixDt)}
+                  rowSpan={2}
+                />
               </tr>
               <tr>
                 <FieldCell label="อำเภอ" value={job.district || "–"} />
-                <td style={cell}>&nbsp;</td>
               </tr>
               <tr>
                 <FieldCell label="จังหวัด" value={job.province || "–"} />
