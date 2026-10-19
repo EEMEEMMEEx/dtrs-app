@@ -5,6 +5,7 @@ import {
 } from "@/lib/jobBreakdownCounts";
 import { parseJobSerialRowsFromDb } from "@/lib/jobSerialRows";
 import { stripReopenAuditFromFixNote } from "@/lib/stripReopenAuditFromFixNote";
+import { getIncidentCategoryLabel } from "@/lib/incidentCategories";
 
 /** ฟิลด์ที่ต้องมีสำหรับส่งออก CSV จาก JobsList */
 export interface JobsListCsvJob {
@@ -12,6 +13,7 @@ export interface JobsListCsvJob {
   ticketNo?: string | null;
   requestTicketNo?: string | null;
   title?: string;
+  incidentCategory?: string | null;
   description?: string;
   location?: string;
   province?: string;
@@ -156,6 +158,7 @@ export function buildJobsListAuditCsv(jobs: readonly JobsListCsvJob[]): string {
     "จังหวัด",
     "อำเภอ",
     "สถานที่",
+    "หัวข้อเหตุขัดข้อง",
     "รายละเอียด",
     "ประเภทสถานที่",
     "ประเภทงาน_กลุ่ม",
@@ -196,6 +199,7 @@ export function buildJobsListAuditCsv(jobs: readonly JobsListCsvJob[]): string {
       j.province ?? "",
       j.district ?? "",
       j.location ?? "",
+      j.incidentCategory ? getIncidentCategoryLabel(j.incidentCategory) : "",
       j.description ?? "",
       fixEnvDisplay(j.fixEnvironment),
       brokenPartDisplay(j.brokenPart),
