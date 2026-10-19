@@ -74,19 +74,22 @@ describe("buildJobsListAuditCsv", () => {
     assert.match(lines[1]!, /,2,/);
   });
 
-  it("does not include หัวข้อ column", () => {
+  it("includes หัวข้อเหตุขัดข้อง column and excludes raw title", () => {
     const csv = buildJobsListAuditCsv([
       {
         id: 1,
         ticketNo: "T-1",
         title: "should-not-appear-as-column",
+        incidentCategory: "RADIO_RX_FAIL",
         status: "PENDING",
         createdAt: "2026-08-01T00:00:00.000Z",
       },
     ]);
     const header = csv.split("\r\n")[0] ?? "";
-    assert.equal(header.includes("หัวข้อ"), false);
-    assert.match(header, /สถานที่,รายละเอียด,/);
+    assert.match(header, /สถานที่,หัวข้อเหตุขัดข้อง,รายละเอียด,/);
+    const dataLine = csv.split("\r\n")[1] ?? "";
+    assert.match(dataLine, /เครื่องวิทยุรับสัญญาณไม่ได้/);
+    assert.equal(dataLine.includes("should-not-appear-as-column"), false);
   });
 
   it("strips [Reopen …] audit from หมายเหตุการซ่อม", () => {

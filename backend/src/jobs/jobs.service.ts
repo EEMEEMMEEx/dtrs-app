@@ -413,6 +413,7 @@ export class JobsService implements OnModuleInit {
           requestTicketNo: true,
           status: true,
           reportDate: true,
+          incidentCategory: true,
           description: true,
           cause: true,
           fixMethod: true,
@@ -449,6 +450,7 @@ export class JobsService implements OnModuleInit {
         requestTicketNo: true,
         status: true,
         reportDate: true,
+        incidentCategory: true,
         description: true,
         cause: true,
         fixMethod: true,
@@ -484,6 +486,7 @@ export class JobsService implements OnModuleInit {
       requestTicketNo: job.requestTicketNo,
       status: job.status,
       reportDate: job.reportDate,
+      incidentCategory: job.incidentCategory,
       description: job.description,
       /** ข้อความจากช่าง — ไม่ใช่ PII เปิดเต็มเหมือน description */
       cause: job.cause,
@@ -583,6 +586,7 @@ export class JobsService implements OnModuleInit {
           status: true,
           reportDate: true,
           createdAt: true,
+          incidentCategory: true,
           description: true,
           title: true,
           cause: true,
@@ -611,6 +615,7 @@ export class JobsService implements OnModuleInit {
               status: true,
               reportDate: true,
               createdAt: true,
+              incidentCategory: true,
               description: true,
               title: true,
               cause: true,
@@ -629,6 +634,7 @@ export class JobsService implements OnModuleInit {
         status: JobStatus;
         reportDate: Date | null;
         createdAt: Date;
+        incidentCategory: string | null;
         description: string | null;
         title: string | null;
         cause: string | null;
@@ -660,6 +666,7 @@ export class JobsService implements OnModuleInit {
           requestTicketNo: j.requestTicketNo,
           status: j.status,
           reportDate: j.reportDate ? j.reportDate.toISOString() : null,
+          incidentCategory: j.incidentCategory,
           issueSummary,
           cause: j.cause,
           fixMethod: j.fixMethod,

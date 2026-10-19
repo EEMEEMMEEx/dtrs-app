@@ -23,7 +23,9 @@ import {
   Clock3,
   Plus,
   Minus,
+  Tag,
 } from "lucide-react";
+import { getIncidentCategoryLabel } from "@/lib/incidentCategories";
 import DashboardPageShell from "@/components/DashboardPageShell";
 import JobTimelineCard from "@/components/JobTimelineCard";
 import ManagedImage, { MANAGED_IMAGE_SIZES } from "@/components/ManagedImage";
@@ -101,6 +103,7 @@ interface JobDetail {
   district?: string;
   agency?: string;
   location?: string;
+  incidentCategory?: string | null;
   description?: string;
   title?: string;
   images?: string[] | null;
@@ -1126,6 +1129,17 @@ export default function JobDetailPage() {
                       )}
                     </div>
                   </div>
+
+                  {job.incidentCategory && (
+                    <div className={GLASS_SECTION}>
+                      <p className="text-xs font-semibold mb-2 flex items-center gap-1 glass-muted-text">
+                        <Tag size={12} aria-hidden /> หัวข้อเหตุขัดข้อง
+                      </p>
+                      <p className="text-sm font-medium glass-text">
+                        {getIncidentCategoryLabel(job.incidentCategory)}
+                      </p>
+                    </div>
+                  )}
 
                   <div className={GLASS_SECTION}>
                     <p className="text-xs font-semibold mb-2 flex items-center gap-1 glass-muted-text">

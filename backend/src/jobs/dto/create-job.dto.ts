@@ -3,6 +3,7 @@ import {
   JobSerialPackedSchema,
   normalizeJobSerialToken,
 } from '../job-serial-rows.schema';
+import { INCIDENT_CATEGORY_CODES } from '../constants/incident-categories';
 
 /** ลบ zero-width / BOM ที่ทำให้ email() fail แม้มองเหมือนถูก */
 function stripInvisible(s: string): string {
@@ -27,49 +28,71 @@ function normalizeOptionalEmail(val: unknown): string {
 /** ต้องตรงกับ `REPORT_DESCRIPTION_MAX_LENGTH` ในหน้า `/public/report` */
 export const JOB_DESCRIPTION_MAX_LENGTH = 500;
 
-export const CreateJobSchema = z.object({
-  province: z.string().trim().min(1, 'กรุณาระบุจังหวัด'),
-  district: z.string().trim().min(1, 'กรุณาระบุอำเภอ'),
-  agency: z.string().trim().min(1, 'กรุณาระบุสถานที่/หน่วยงาน'),
-  location: z.string().trim().min(1, 'กรุณาระบุชื่อสถานี'),
-  subdistrict: z
-    .preprocess(
-      (v) => (v === undefined || v === null ? '' : String(v).trim()),
-      z.string().max(200, 'ชื่อตำบลยาวเกินไป'),
-    )
-    .optional(),
-  description: z
-    .string()
-    .trim()
-    .min(10, 'รายละเอียดต้องมีอย่างน้อย 10 ตัวอักษร')
-    .max(
-      JOB_DESCRIPTION_MAX_LENGTH,
-      `รายละเอียดต้องไม่เกิน ${JOB_DESCRIPTION_MAX_LENGTH} ตัวอักษร`,
+export const CreateJobSchema = z
+  .object({
+    province: z.string().trim().min(1, 'กรุณาระบุจังหวัด'),
+    district: z.string().trim().min(1, 'กรุณาระบุอำเภอ'),
+    agency: z.string().trim().min(1, 'กรุณาระบุสถานที่/หน่วยงาน'),
+    location: z.string().trim().min(1, 'กรุณาระบุชื่อสถานี'),
+    subdistrict: z
+      .preprocess(
+        (v) => (v === undefined || v === null ? '' : String(v).trim()),
+        z.string().max(200, 'ชื่อตำบลยาวเกินไป'),
+      )
+      .optional(),
+    incidentCategory: z.enum(INCIDENT_CATEGORY_CODES, {
+      errorMap: () => ({ message: 'กรุณาเลือกหัวข้อเหตุขัดข้อง' }),
+    }),
+    description: z
+      .preprocess(
+        (v) => (v === undefined || v === null ? '' : String(v).trim()),
+        z
+          .string()
+          .max(
+            JOB_DESCRIPTION_MAX_LENGTH,
+            `รายละเอียดต้องไม่เกิน ${JOB_DESCRIPTION_MAX_LENGTH} ตัวอักษร`,
+          ),
+      )
+      .optional(),
+    title: z.string().trim().optional(),
+    reporterName: z.string().trim().min(1, 'กรุณาระบุชื่อผู้แจ้ง'),
+    reporterPhone: z
+      .string()
+      .trim()
+      .regex(/^[0-9]{9,10}$/, 'เบอร์โทรต้องเป็นตัวเลข 9-10 หลัก'),
+    /**
+     * optional — ว่างหรือไม่ส่งได้; ถ้าระบุต้องเป็นอีเมลถูกต้อง
+     * multipart อาจส่ง '' / ไม่มีฟิลด์ / หรือซ้ำชื่อ → Multer ให้เป็น string[]
+     * ห้ามใช้ String(array) ตรงๆ — เช่น ['', 'a@b.com'] กลายเป็น ',a@b.com' แล้ว email() fail
+     */
+    reporterEmail: z.preprocess(
+      (val) => normalizeOptionalEmail(val),
+      z.union([z.literal(''), z.string().email('รูปแบบอีเมลไม่ถูกต้อง')]),
     ),
-  title: z.string().trim().optional(),
-  reporterName: z.string().trim().min(1, 'กรุณาระบุชื่อผู้แจ้ง'),
-  reporterPhone: z
-    .string()
-    .trim()
-    .regex(/^[0-9]{9,10}$/, 'เบอร์โทรต้องเป็นตัวเลข 9-10 หลัก'),
-  /**
-   * optional — ว่างหรือไม่ส่งได้; ถ้าระบุต้องเป็นอีเมลถูกต้อง
-   * multipart อาจส่ง '' / ไม่มีฟิลด์ / หรือซ้ำชื่อ → Multer ให้เป็น string[]
-   * ห้ามใช้ String(array) ตรงๆ — เช่น ['', 'a@b.com'] กลายเป็น ',a@b.com' แล้ว email() fail
-   */
-  reporterEmail: z.preprocess(
-    (val) => normalizeOptionalEmail(val),
-    z.union([z.literal(''), z.string().email('รูปแบบอีเมลไม่ถูกต้อง')]),
-  ),
-  /** ตำแหน่งงาน — เก็บที่ User ตอนสร้าง/อัปเดตผู้แจ้งจากหน้า public/report */
-  reporterPosition: z
-    .preprocess(
-      (v) => (v === undefined || v === null ? '' : String(v).trim()),
-      z.string().max(200, 'ตำแหน่งยาวเกินไป'),
-    )
-    .optional(),
-  isOutOfContract: z.any().optional(),
-});
+    /** ตำแหน่งงาน — เก็บที่ User ตอนสร้าง/อัปเดตผู้แจ้งจากหน้า public/report */
+    reporterPosition: z
+      .preprocess(
+        (v) => (v === undefined || v === null ? '' : String(v).trim()),
+        z.string().max(200, 'ตำแหน่งยาวเกินไป'),
+      )
+      .optional(),
+    isOutOfContract: z.any().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.incidentCategory === 'OTHER') {
+        const desc =
+          typeof data.description === 'string' ? data.description.trim() : '';
+        return desc.length >= 10;
+      }
+      return true;
+    },
+    {
+      message:
+        'กรุณาระบุรายละเอียดเหตุขัดข้องอย่างน้อย 10 ตัวอักษร สำหรับหมวดหมู่อื่นๆ',
+      path: ['description'],
+    },
+  );
 
 export type CreateJobDto = z.infer<typeof CreateJobSchema>;
 
