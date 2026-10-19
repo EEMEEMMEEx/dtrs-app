@@ -47,6 +47,18 @@ npm install
 
 ## [Unreleased]
 
+### Changed
+
+- **หัวตาราง PDF ใบแจ้งซ่อม**: รวมช่องวันที่ให้เป็นแถวเดียวกัน — 「วันที่ได้รับแจ้งซ่อม」 ครอบ 2 แถว และ 「วันที่ดำเนินการแล้วเสร็จ」 ครอบ 2 แถว — และตัด `(เลขรับแจ้ง: …)` ออกจากช่อง「เลขที่ใบแจ้งซ่อม」 (ยังคงแสดงเลขรับแจ้งเมื่อยังไม่จำแนกงาน)
+
+---
+
+## [0.8.7] - 2026-10-09
+
+### Fixed
+
+- **CI Backend ESLint Audit & Fix**: แก้ไข ESLint errors ทั้งหมด 16 รายการใน backend ทำให้ `npx eslint .` และ `npx eslint "{src,apps,libs,test}/**/*.ts"` ผ่านด้วย exit code 0; กำหนด types ให้กับ supertest response payloads ใน e2e tests (`sites.e2e-spec.ts`, `jobs-close.e2e-spec.ts`, `jobs-issue-images.e2e-spec.ts`, `public-jobs-upload.e2e-spec.ts`) เพื่อลด `no-unsafe-*` warnings และเพิ่ม `dist/**`, `.agents/**`, `.claude/**`, `.windsurf/**` ใน `ignores` ของ ESLint config
+
 ---
 
 ## [0.8.6] - 2026-10-01
