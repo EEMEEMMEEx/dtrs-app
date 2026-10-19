@@ -31,8 +31,10 @@ import {
   Stamp,
   FileSignature,
   List,
+  Tag,
 } from "lucide-react";
 import { toastSuccess, toastError, confirmDialog, toastWarning } from "@/lib/toast";
+import { getIncidentCategoryLabel } from "@/lib/incidentCategories";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -225,6 +227,7 @@ interface Job {
   ticketNo?: string | null;
   requestTicketNo?: string | null;
   title?: string;
+  incidentCategory?: string | null;
   description?: string;
   location?: string;
   province?: string;
@@ -829,6 +832,8 @@ export default function JobsList({
         (j) =>
           (j.ticketNo && j.ticketNo.toLowerCase().includes(q)) ||
           (j.requestTicketNo && j.requestTicketNo.toLowerCase().includes(q)) ||
+          (j.incidentCategory && j.incidentCategory.toLowerCase().includes(q)) ||
+          (j.incidentCategory && getIncidentCategoryLabel(j.incidentCategory).toLowerCase().includes(q)) ||
           (j.description && j.description.toLowerCase().includes(q)) ||
           (j.reporterName && j.reporterName.toLowerCase().includes(q)) ||
           (j.assignedTo?.name && j.assignedTo.name.toLowerCase().includes(q)) ||
@@ -2401,6 +2406,11 @@ export default function JobsList({
                     </>
                   )}
                   <td className="px-2.5 py-2.5 max-w-0 text-sm text-slate-800 dark:text-slate-200">
+                    {job.incidentCategory && (
+                      <span className="inline-block text-[11px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20 mb-1 max-w-full truncate">
+                        {getIncidentCategoryLabel(job.incidentCategory)}
+                      </span>
+                    )}
                     {desc.clipped && desc.full ? (
                       <TextHoverTooltip text={desc.full}>
                         <span className="truncate block" title={desc.full}>
@@ -2784,6 +2794,22 @@ export default function JobsList({
                           .join(" · ") || "–"}
                       </p>
                     </div>
+                    {detailJob.incidentCategory && (
+                      <div>
+                        <p
+                          className="text-xs font-semibold mb-1 flex items-center gap-1"
+                          style={{ color: "#64748b" }}
+                        >
+                          <Tag size={12} /> หัวข้อเหตุขัดข้อง
+                        </p>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "#1e293b" }}
+                        >
+                          {getIncidentCategoryLabel(detailJob.incidentCategory)}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p
                         className="text-xs font-semibold mb-1 flex items-center gap-1"

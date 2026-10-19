@@ -9,6 +9,7 @@ import {
   buildReportedEmailHtml,
   type JobEmailPayload,
 } from './job-email-html';
+import { getIncidentCategoryLabel } from './constants/incident-categories';
 
 const STATUS_TH: Record<string, string> = {
   PENDING: 'รอดำเนินการ',
@@ -20,10 +21,16 @@ const STATUS_TH: Record<string, string> = {
 function pickIssueSummary(
   title: string | null | undefined,
   description: string | null | undefined,
+  incidentCategory?: string | null,
 ): string | null {
+  const cat = incidentCategory
+    ? getIncidentCategoryLabel(incidentCategory)
+    : null;
+  const d = description?.trim();
+  if (cat && d) return `${cat} · ${d}`;
+  if (cat) return cat;
   const t = title?.trim();
   if (t) return t;
-  const d = description?.trim();
   return d || null;
 }
 
@@ -157,7 +164,11 @@ export class JobEmailNotificationService {
     return {
       ticketNo: job.ticketNo ?? job.requestTicketNo,
       requestTicketNo: job.requestTicketNo,
-      issueSummary: pickIssueSummary(job.title, job.description),
+      issueSummary: pickIssueSummary(
+        job.title,
+        job.description,
+        (job as { incidentCategory?: string | null }).incidentCategory,
+      ),
       province: job.province,
       district: job.district,
       agency: job.agency,

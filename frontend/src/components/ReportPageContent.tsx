@@ -10,6 +10,7 @@ import PublicLayoutShell from '@/components/PublicLayoutShell';
 import DashboardLayoutShell from '@/components/DashboardLayoutShell';
 import Select from 'react-select';
 import { getReactSelectGlassStyles } from '@/lib/reactSelectGlassStyles';
+import { INCIDENT_CATEGORY_OPTIONS } from '@/lib/incidentCategories';
 import { useAppTheme } from '@/lib/useAppTheme';
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -130,6 +131,7 @@ export default function ReportPageContent({
     province: '', district: '', subdistrict: '', agency: '', location: '',
     reporterName: '', reporterPhone: '', reporterEmail: '',
     reporterPosition: '',
+    incidentCategory: '',
     description: '',
   });
 
@@ -564,13 +566,19 @@ export default function ReportPageContent({
       toastWarning('ข้อมูลสถานที่ไม่ครบ', 'กรุณาเลือก จังหวัด / อำเภอ / สถานที่ / ชื่อสถานี ให้ครบถ้วน');
       return;
     }
-    const descriptionTrimmed = form.description.trim();
-    if (!descriptionTrimmed || descriptionTrimmed.length < REPORT_DESCRIPTION_MIN_LENGTH) {
-      toastWarning(
-        'รายละเอียดไม่ครบ',
-        `รายละเอียดต้องมีอย่างน้อย ${REPORT_DESCRIPTION_MIN_LENGTH} ตัวอักษร`,
-      );
+    if (!form.incidentCategory) {
+      toastWarning('ข้อมูลไม่ครบ', 'กรุณาเลือกหัวข้อเหตุขัดข้อง');
       return;
+    }
+    const descriptionTrimmed = form.description.trim();
+    if (form.incidentCategory === 'OTHER') {
+      if (!descriptionTrimmed || descriptionTrimmed.length < REPORT_DESCRIPTION_MIN_LENGTH) {
+        toastWarning(
+          'รายละเอียดไม่ครบ',
+          `เนื่องจากเลือก "อื่นๆ" กรุณาระบุรายละเอียดเหตุขัดข้องอย่างน้อย ${REPORT_DESCRIPTION_MIN_LENGTH} ตัวอักษร`,
+        );
+        return;
+      }
     }
     if (descriptionTrimmed.length > REPORT_DESCRIPTION_MAX_LENGTH) {
       toastWarning(
@@ -652,6 +660,7 @@ export default function ReportPageContent({
         reporterPhone: '',
         reporterEmail: '',
         reporterPosition: '',
+        incidentCategory: '',
         description: '',
       });
       setImages([null, null, null]); setPreviews([null, null, null]);
@@ -688,8 +697,11 @@ export default function ReportPageContent({
   const emailOk = emailFormatOk && !reporterEmailError;
   const descriptionLen = form.description.trim().length;
   const descriptionOk =
-    descriptionLen >= REPORT_DESCRIPTION_MIN_LENGTH &&
-    descriptionLen <= REPORT_DESCRIPTION_MAX_LENGTH;
+    form.incidentCategory === 'OTHER'
+      ? descriptionLen >= REPORT_DESCRIPTION_MIN_LENGTH &&
+        descriptionLen <= REPORT_DESCRIPTION_MAX_LENGTH
+      : descriptionLen <= REPORT_DESCRIPTION_MAX_LENGTH;
+  const categoryOk = !!form.incidentCategory;
   const canSubmit =
     canProceed &&
     nameOk &&
@@ -700,6 +712,7 @@ export default function ReportPageContent({
     !!form.district &&
     !!form.agency &&
     !!form.location &&
+    categoryOk &&
     descriptionOk;
   
   const customStyles = getReactSelectGlassStyles(theme);
@@ -1118,54 +1131,107 @@ export default function ReportPageContent({
               <MessageSquare size={18} className={headerIconClass} />
               <h2 className={headerTitleClass}>รายละเอียดปัญหา</h2>
             </div>
-            <div>
-              <Label className={labelClass} htmlFor="report-description">
-                เหตุขัดข้อง <span className="text-red-500">*</span>
-              </Label>
-              <p
-                id="report-description-hint"
-                className="text-xs glass-subtle-text leading-relaxed mb-2 max-w-3xl"
-              >
-                ระบบจะรับเมื่อมีอย่างน้อย{' '}
-                <span className="glass-muted-text font-medium">
-                  {REPORT_DESCRIPTION_MIN_LENGTH} ตัวอักษร
-                </span>
-                {' '}และไม่เกิน{' '}
-                <span className="glass-muted-text font-medium">
-                  {REPORT_DESCRIPTION_MAX_LENGTH} ตัวอักษร
-                </span>
-                {' '}กรุณาเขียนให้ครบอย่างน้อยหนึ่งประโยค เช่น เหตุขัดข้องที่พบ (เสียง ภาพ ไฟ ฯลฯ) จุดที่เกิด
-                (ห้อง/ชั้น/อุปกรณ์) เวลาที่พบ หรือความถี่ของปัญหา
-              </p>
-              <Textarea
-                id="report-description"
-                required
-                minLength={REPORT_DESCRIPTION_MIN_LENGTH}
-                maxLength={REPORT_DESCRIPTION_MAX_LENGTH}
-                className={cn(inputClass, "min-h-[140px] resize-y")}
-                placeholder="ระบุเหตุขัดข้อง, จุดสังเกต หรือปัญหาที่พบให้ละเอียด..."
-                value={form.description}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    description: clampReportDescription(e.target.value),
-                  })
-                }
-                rows={5}
-                aria-describedby="report-description-hint report-description-count"
-              />
-              <p
-                id="report-description-count"
-                className={cn(
-                  "mt-1.5 text-xs text-right tabular-nums",
-                  form.description.length >= REPORT_DESCRIPTION_MAX_LENGTH
-                    ? "font-medium text-amber-700 dark:text-amber-400"
-                    : "glass-subtle-text",
-                )}
-                aria-live="polite"
-              >
-                {form.description.length}/{REPORT_DESCRIPTION_MAX_LENGTH}
-              </p>
+            <div className="space-y-4">
+              <div>
+                <Label className={labelClass} htmlFor="report-incident-category">
+                  หัวข้อเหตุขัดข้อง <span className="text-red-500">*</span>
+                </Label>
+                <div className="mt-1.5">
+                  <Select
+                    inputId="report-incident-category"
+                    options={INCIDENT_CATEGORY_OPTIONS}
+                    placeholder="-- เลือกหัวข้อเหตุขัดข้อง --"
+                    value={
+                      INCIDENT_CATEGORY_OPTIONS.find(
+                        (opt) => opt.value === form.incidentCategory,
+                      ) || null
+                    }
+                    onChange={(opt: { value: string; label: string } | null) =>
+                      setForm({
+                        ...form,
+                        incidentCategory: opt?.value || '',
+                      })
+                    }
+                    styles={customStyles}
+                    menuPosition="fixed"
+                    menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                    isClearable
+                    noOptionsMessage={() => 'ไม่พบข้อมูล'}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className={labelClass} htmlFor="report-description">
+                  เหตุขัดข้อง (รายละเอียดเพิ่มเติม){' '}
+                  {form.incidentCategory === 'OTHER' ? (
+                    <span className="text-red-500">*</span>
+                  ) : (
+                    <span className="text-xs font-normal text-muted-foreground glass-subtle-text">
+                      (ไม่บังคับ)
+                    </span>
+                  )}
+                </Label>
+                <p
+                  id="report-description-hint"
+                  className="text-xs glass-subtle-text leading-relaxed mb-2 max-w-3xl"
+                >
+                  {form.incidentCategory === 'OTHER' ? (
+                    <>
+                      กรุณาระบุรายละเอียดอย่างน้อย{' '}
+                      <span className="glass-muted-text font-medium text-red-500 dark:text-red-400">
+                        {REPORT_DESCRIPTION_MIN_LENGTH} ตัวอักษร
+                      </span>{' '}
+                      และไม่เกิน{' '}
+                      <span className="glass-muted-text font-medium">
+                        {REPORT_DESCRIPTION_MAX_LENGTH} ตัวอักษร
+                      </span>{' '}
+                      สำหรับหมวดหมู่อื่นๆ เช่น จุดที่เกิด เวลา หรือความถี่ของปัญหา
+                    </>
+                  ) : (
+                    <>
+                      (ระบุหรือไม่ก็ได้ ไม่เกิน{' '}
+                      <span className="glass-muted-text font-medium">
+                        {REPORT_DESCRIPTION_MAX_LENGTH} ตัวอักษร
+                      </span>
+                      ) เช่น จุดที่เกิด (ห้อง/ชั้น/อุปกรณ์) เวลาที่พบ หรือความถี่ของปัญหา
+                    </>
+                  )}
+                </p>
+                <Textarea
+                  id="report-description"
+                  required={form.incidentCategory === 'OTHER'}
+                  minLength={form.incidentCategory === 'OTHER' ? REPORT_DESCRIPTION_MIN_LENGTH : undefined}
+                  maxLength={REPORT_DESCRIPTION_MAX_LENGTH}
+                  className={cn(inputClass, "min-h-[120px] resize-y")}
+                  placeholder={
+                    form.incidentCategory === 'OTHER'
+                      ? 'กรุณาระบุเหตุขัดข้องหรือปัญหาที่พบโดยละเอียด (อย่างน้อย 10 ตัวอักษร)...'
+                      : 'ระบุรายละเอียดเพิ่มเติม หรือข้อสังเกตเพิ่มเติม (ถ้ามี)...'
+                  }
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      description: clampReportDescription(e.target.value),
+                    })
+                  }
+                  rows={4}
+                  aria-describedby="report-description-hint report-description-count"
+                />
+                <p
+                  id="report-description-count"
+                  className={cn(
+                    "mt-1.5 text-xs text-right tabular-nums",
+                    form.description.length >= REPORT_DESCRIPTION_MAX_LENGTH
+                      ? "font-medium text-amber-700 dark:text-amber-400"
+                      : "glass-subtle-text",
+                  )}
+                  aria-live="polite"
+                >
+                  {form.description.length}/{REPORT_DESCRIPTION_MAX_LENGTH}
+                </p>
+              </div>
             </div>
           </section>
 

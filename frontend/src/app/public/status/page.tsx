@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import PublicRouteLoading from "@/components/PublicRouteLoading";
 import ManagedImage, { MANAGED_IMAGE_SIZES } from "@/components/ManagedImage";
 import ManagedImageFrame from "@/components/ManagedImageFrame";
+import { getIncidentCategoryLabel } from "@/lib/incidentCategories";
 
 const STATUS_LABEL: Record<string, { text: string; badgeClass: string }> = {
   PENDING: {
@@ -248,6 +249,7 @@ function StatusPageInner() {
     status: string;
     reportDate: string | null;
     detailLevel?: 'masked' | 'full';
+    incidentCategory?: string | null;
     description?: string | null;
     cause?: string | null;
     fixMethod?: string | null;
@@ -271,6 +273,7 @@ function StatusPageInner() {
     status: string;
     reportDate: string | null;
     detailLevel?: 'masked' | 'full';
+    incidentCategory?: string | null;
     description?: string | null;
     cause?: string | null;
     fixMethod?: string | null;
@@ -1084,9 +1087,32 @@ function StatusPageInner() {
                   <FileText size={18} className="text-blue-500 shrink-0" aria-hidden />
                   <h2 className="text-base font-bold glass-text">รายละเอียดปัญหา</h2>
                 </div>
-                <p className="text-sm glass-muted-text whitespace-pre-wrap wrap-break-word leading-relaxed min-h-12">
-                  {result.description?.trim() ? result.description : '–'}
-                </p>
+                {result.incidentCategory && (
+                  <div className="mb-3">
+                    <span className="text-xs font-semibold glass-muted-text block mb-1">
+                      หัวข้อเหตุขัดข้อง
+                    </span>
+                    <span className="inline-block text-sm font-medium px-2 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+                      {getIncidentCategoryLabel(result.incidentCategory)}
+                    </span>
+                  </div>
+                )}
+                {result.description?.trim() ? (
+                  <div>
+                    {result.incidentCategory && (
+                      <span className="text-xs font-semibold glass-muted-text block mb-1">
+                        รายละเอียดเพิ่มเติม
+                      </span>
+                    )}
+                    <p className="text-sm glass-muted-text whitespace-pre-wrap wrap-break-word leading-relaxed">
+                      {result.description}
+                    </p>
+                  </div>
+                ) : !result.incidentCategory ? (
+                  <p className="text-sm glass-muted-text whitespace-pre-wrap wrap-break-word leading-relaxed min-h-12">
+                    –
+                  </p>
+                ) : null}
               </section>
 
               <section className={GLASS_SECTION} aria-labelledby="status-cause-fix-heading">

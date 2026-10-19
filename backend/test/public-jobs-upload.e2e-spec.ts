@@ -10,6 +10,9 @@ import { JobsService } from '../src/jobs/jobs.service';
 import { PublicJobsController } from '../src/jobs/public-jobs.controller';
 import { MinioService } from '../src/minio/minio.service';
 
+import { RolesService } from '../src/roles/roles.service';
+import { JwtService } from '@nestjs/jwt';
+
 interface ApiResponseBody {
   data?: { ticketNo?: string };
   error?: { message?: string };
@@ -24,6 +27,7 @@ const VALID_FIELDS = {
   district: 'จตุจักร',
   agency: 'การรถไฟ',
   location: 'สถานีทดสอบ',
+  incidentCategory: 'DISPLAY_FAULT',
   description: 'จอ dist ดับ ไม่มีภาพ ต้องซ่อม',
   reporterName: 'ทดสอบ ผู้แจ้ง',
   reporterPhone: '0812345678',
@@ -42,6 +46,12 @@ describe('POST /api/public/jobs upload (e2e)', () => {
   const eventsGateway = {
     notifyNewJob: jest.fn(),
   };
+  const rolesService = {
+    getPermissionsForUser: jest.fn(),
+  };
+  const jwtService = {
+    verify: jest.fn(),
+  };
 
   beforeAll(async () => {
     const moduleFixture = await Test.createTestingModule({
@@ -50,6 +60,8 @@ describe('POST /api/public/jobs upload (e2e)', () => {
         { provide: JobsService, useValue: jobsService },
         { provide: MinioService, useValue: minioService },
         { provide: EventsGateway, useValue: eventsGateway },
+        { provide: RolesService, useValue: rolesService },
+        { provide: JwtService, useValue: jwtService },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],
     }).compile();
