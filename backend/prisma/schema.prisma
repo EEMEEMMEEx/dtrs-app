@@ -144,9 +144,10 @@ model Job {
   reporterEmail String? // Email ผู้แจ้ง
 
   // Issue Details
-  title       String?
-  description String? @db.Text // ข้อขัดข้อง
-  images      Json? // 1.รูปภาพขัดข้อง, 2, 3
+  title            String?
+  incidentCategory String?   @db.VarChar(64) // หัวข้อเหตุขัดข้อง (รหัสหมวดหมู่อาการ)
+  description      String?   @db.Text // ข้อขัดข้อง
+  images           Json? // 1.รูปภาพขัดข้อง, 2, 3
 
   status JobStatus @default(PENDING)
 

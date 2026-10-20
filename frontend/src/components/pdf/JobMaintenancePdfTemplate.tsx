@@ -7,6 +7,7 @@ import { PdfReportHeader } from "@/components/pdf/PdfReportHeader";
 import { sarabun } from "@/lib/fonts";
 import { REPORT_PDF_HEADER } from "@/lib/reportPdfConstants";
 import { stripReopenAuditFromFixNote } from "@/lib/stripReopenAuditFromFixNote";
+import { getIncidentCategoryLabel } from "@/lib/incidentCategories";
 
 /** ข้อมูลงานสำหรับเทมเพลต PDF (สอดคล้องกับ JobDetail หน้า dashboard) */
 export type JobMaintenancePdfJob = {
@@ -24,6 +25,7 @@ export type JobMaintenancePdfJob = {
   subdistrict?: string;
   agency?: string;
   location?: string;
+  incidentCategory?: string | null;
   description?: string;
   title?: string;
   images?: string[] | null;
@@ -312,11 +314,16 @@ export function JobMaintenancePdfTemplate({
 
   const reportDt = job.reportDate ?? job.createdAt;
   const fixDt = job.fixDate;
+  const catLabel = job.incidentCategory ? getIncidentCategoryLabel(job.incidentCategory) : "";
+  const descText = job.description?.trim();
   const issueLine =
-    job.description?.trim() ||
-    job.title?.trim() ||
-    (isStoredJobTypeOnly(job.brokenPart) ? "" : job.brokenPart?.trim()) ||
-    "–";
+    catLabel && descText
+      ? `${catLabel}\n${descText}`
+      : catLabel ||
+        descText ||
+        job.title?.trim() ||
+        (isStoredJobTypeOnly(job.brokenPart) ? "" : job.brokenPart?.trim()) ||
+        "–";
   const causeLine = job.cause?.trim() || "–";
   const fixNoteForPdf = stripReopenAuditFromFixNote(job.fixNote);
   const fixParts =
