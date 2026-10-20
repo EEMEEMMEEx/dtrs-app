@@ -18,20 +18,14 @@ const STATUS_TH: Record<string, string> = {
   CANCELLED: 'ยกเลิก',
 };
 
+/** ข้อความสำหรับแถว「รายละเอียดเพิ่มเติม」— ป้ายหมวดหมู่แยกไปแถวของตัวเองแล้ว */
 function pickIssueSummary(
   title: string | null | undefined,
   description: string | null | undefined,
-  incidentCategory?: string | null,
 ): string | null {
-  const cat = incidentCategory
-    ? getIncidentCategoryLabel(incidentCategory)
-    : null;
-  const d = description?.trim();
-  if (cat && d) return `${cat} · ${d}`;
-  if (cat) return cat;
   const t = title?.trim();
   if (t) return t;
-  return d || null;
+  return description?.trim() || null;
 }
 
 function formatFixEnvironmentLabel(
@@ -136,6 +130,7 @@ export class JobEmailNotificationService {
         requestTicketNo: true,
         title: true,
         description: true,
+        incidentCategory: true,
         status: true,
         province: true,
         district: true,
@@ -164,11 +159,10 @@ export class JobEmailNotificationService {
     return {
       ticketNo: job.ticketNo ?? job.requestTicketNo,
       requestTicketNo: job.requestTicketNo,
-      issueSummary: pickIssueSummary(
-        job.title,
-        job.description,
-        (job as { incidentCategory?: string | null }).incidentCategory,
-      ),
+      incidentCategoryLabel: job.incidentCategory
+        ? getIncidentCategoryLabel(job.incidentCategory)
+        : null,
+      issueSummary: pickIssueSummary(job.title, job.description),
       province: job.province,
       district: job.district,
       agency: job.agency,

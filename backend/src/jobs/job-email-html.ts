@@ -3,8 +3,10 @@
 export type JobEmailPayload = {
   ticketNo: string | null;
   requestTicketNo?: string | null;
-  /** แสดงในอีเมล: หัวข้อหรือรายละเอียดข้อขัดข้อง (title ก่อน แล้วค่อย description) */
+  /** แสดงในอีเมล: หัวข้อหรือรายละเอียดเพิ่มเติม (title ก่อน แล้วค่อย description) */
   issueSummary: string | null;
+  /** ป้ายภาษาไทยของหัวข้อเหตุขัดข้อง (13 stable codes); null/undefined = งานเก่าหรือไม่ได้เลือก */
+  incidentCategoryLabel?: string | null;
   province: string | null;
   district: string | null;
   /** สถานที่/หน่วยงาน (denormalize จาก Site) */
@@ -126,7 +128,8 @@ function wrapBody(opts: {
             <td style="padding:0 16px 8px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
                 ${rowText('เลขที่ใบแจ้ง', esc(payload.ticketNo))}
-                ${rowText('เรื่อง / ข้อขัดข้อง', esc(payload.issueSummary))}
+                ${rowText('หัวข้อเหตุขัดข้อง', esc(payload.incidentCategoryLabel))}
+                ${rowText('รายละเอียดเพิ่มเติม', esc(payload.issueSummary))}
                 ${rowText('สถานที่', esc(loc))}
                 ${rowText('ประเภทสถานที่', esc(payload.fixEnvironmentLabel))}
                 ${rowText('ประเภทงาน', esc(payload.jobTypeLabel))}
