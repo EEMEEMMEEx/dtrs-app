@@ -6,7 +6,7 @@ describe('CreateJobSchema email optional (Meeting Phase A)', () => {
     district: 'หาดใหญ่',
     agency: 'ที่ทำการบ้านผู้ใหญ่บ้าน',
     location: 'หมู่ 1 สถานีทดสอบ',
-    incidentCategory: 'RADIO_RX_FAIL',
+    incidentCategory: 'RADIO_TRANSCEIVER_FAIL',
     description: 'รายละเอียดปัญหาอย่างน้อยสิบตัวอักษร',
     reporterName: 'ผู้แจ้ง',
     reporterPhone: '0812345678',
@@ -75,19 +75,18 @@ describe('CreateJobSchema email optional (Meeting Phase A)', () => {
     ).toThrow();
   });
 
-  it('accepts all 13 valid incidentCategory codes', () => {
+  it('accepts all 12 valid incidentCategory codes', () => {
     const codes = [
-      'RADIO_RX_FAIL',
-      'RADIO_TX_FAIL',
-      'RADIO_REG_FAIL',
-      'POWER_FAULT',
+      'RADIO_TRANSCEIVER_FAIL',
+      'POWER_ON_FAIL',
+      'BATTERY_BACKUP_FAIL',
       'DISPLAY_FAULT',
       'CONTROL_FAULT',
+      'ANTENNA_DAMAGED',
       'BASE_TX_OFF',
       'BASE_OFFLINE',
-      'ANTENNA_DAMAGED',
       'ALARM_SYSTEM',
-      'DISASTER_ENVIRONMENT',
+      'DISASTER_LIGHTNING',
       'PHYSICAL_DAMAGE',
       'OTHER',
     ];
@@ -105,7 +104,7 @@ describe('CreateJobSchema email optional (Meeting Phase A)', () => {
   it('allows optional description when incidentCategory is not OTHER', () => {
     const parsed = CreateJobSchema.parse({
       ...base,
-      incidentCategory: 'RADIO_RX_FAIL',
+      incidentCategory: 'RADIO_TRANSCEIVER_FAIL',
       description: '',
       reporterEmail: '',
     });
