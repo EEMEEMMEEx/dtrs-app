@@ -28,7 +28,9 @@
     "script:seed-sites-xlsx": "ts-node scripts/seed-sites-from-xlsx.ts",
     "script:seed-sites-xlsx:dry": "ts-node scripts/seed-sites-from-xlsx.ts --dry-run",
     "script:seed-sites-xlsx:clear": "ts-node scripts/seed-sites-from-xlsx.ts --clear",
-    "script:migrate-hex-tickets": "ts-node scripts/migrate-hex-tickets.ts"
+    "script:migrate-hex-tickets": "ts-node scripts/migrate-hex-tickets.ts",
+    "script:migrate-incident-categories": "ts-node scripts/migrate-incident-categories.ts",
+    "script:migrate-incident-categories:dry": "ts-node scripts/migrate-incident-categories.ts --dry-run"
   },
   "engines": {
     "npm": ">=10.0.0",

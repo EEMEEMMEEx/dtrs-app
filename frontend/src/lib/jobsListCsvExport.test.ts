@@ -92,6 +92,20 @@ describe("buildJobsListAuditCsv", () => {
     assert.equal(dataLine.includes("should-not-appear-as-column"), false);
   });
 
+  it("exports new standard incident category label in CSV", () => {
+    const csv = buildJobsListAuditCsv([
+      {
+        id: 2,
+        ticketNo: "T-2",
+        incidentCategory: "RADIO_TRANSCEIVER_FAIL",
+        status: "PENDING",
+        createdAt: "2026-08-01T00:00:00.000Z",
+      },
+    ]);
+    const dataLine = csv.split("\r\n")[1] ?? "";
+    assert.match(dataLine, /วิทยุรับ-ส่งสัญญาณไม่ได้/);
+  });
+
   it("strips [Reopen …] audit from หมายเหตุการซ่อม", () => {
     const csv = buildJobsListAuditCsv([
       {
