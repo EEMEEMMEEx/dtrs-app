@@ -47,6 +47,10 @@ npm install
 
 ## [Unreleased]
 
+### Changed
+
+- **อัปเกรด Node.js เป็น 22.23.4 (LTS)**: base image ของ `frontend/Dockerfile` และ `backend/Dockerfile` ทั้งทุก stage (`builder`/`ci-runner`/`runner`) เปลี่ยนจาก `node:20-bookworm-slim` เป็น `node:22.23.4-bookworm-slim`; GitLab CI `NODE_VERSION` เป็น `22.23.4` (มีผลกับ job `test:frontend`, `test:backend`, `build:frontend`, `build:backend`) และกำหนด `engines.node` เป็น `>=22.23.4` ที่ root/`backend`/`frontend` — ไม่มีการเปลี่ยน API หรือพฤติกรรมแอป
+
 ---
 
 ## [0.9.3] - 2026-10-22

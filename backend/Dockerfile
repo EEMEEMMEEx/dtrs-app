@@ -4,7 +4,7 @@
 #   runner     — default (stage สุดท้าย); build ภายใน Docker (docker compose / local)
 #   ci-runner  — copy artifacts จาก CI (build:backend) โดยไม่ rebuild
 
-FROM node:20-bookworm-slim AS builder
+FROM node:22.23.4-bookworm-slim AS builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -15,7 +15,7 @@ COPY . .
 RUN npx prisma generate && npm run build && npm prune --omit=dev
 
 # CI: ใช้เมื่อ build:backend ส่ง dist + node_modules (prod) มาแล้ว
-FROM node:20-bookworm-slim AS ci-runner
+FROM node:22.23.4-bookworm-slim AS ci-runner
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
   openssl ca-certificates dumb-init \
@@ -32,7 +32,7 @@ EXPOSE 4100
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/src/main.js"]
 
-FROM node:20-bookworm-slim AS runner
+FROM node:22.23.4-bookworm-slim AS runner
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
   openssl ca-certificates dumb-init \
