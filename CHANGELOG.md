@@ -49,6 +49,14 @@ npm install
 
 ---
 
+## [0.9.3] - 2026-10-22
+
+### Fixed
+
+- **CI `test:backend` (ESLint)**: จัดรูปแบบ `backend/src/jobs/constants/incident-categories.ts` ตาม Prettier ใน `INCIDENT_CATEGORY_EN_LABELS` — CI รัน `npx eslint` แบบไม่มี `--fix` จึงทำให้ `prettier/prettier` 14 errors (ในไฟล์เดียว) ทำให้ job ล้ม แก้ด้วย `eslint --fix` โดยไม่เปลี่ยน runtime behavior
+
+---
+
 ## [0.9.2] - 2026-10-21
 
 ### Changed
