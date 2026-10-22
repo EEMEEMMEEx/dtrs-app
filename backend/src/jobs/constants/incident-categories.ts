@@ -56,20 +56,21 @@ const INCIDENT_CATEGORY_LABEL_MAP: Record<IncidentCategoryCode, string> = {
 /**
  * คำแปลภาษาอังกฤษสำหรับหมวดหมู่อาการ (สำหรับเอกสาร / API / ระบบ 2 ภาษา)
  */
-export const INCIDENT_CATEGORY_EN_LABELS: Record<IncidentCategoryCode, string> = {
-  RADIO_TRANSCEIVER_FAIL: 'Radio cannot transmit/receive',
-  POWER_ON_FAIL: 'Device will not power on',
-  BATTERY_BACKUP_FAIL: 'Battery / backup power failure',
-  DISPLAY_FAULT: 'Display not working / status light fault',
-  CONTROL_FAULT: 'Buttons / control panel unresponsive',
-  ANTENNA_DAMAGED: 'Antenna / signal cable damaged',
-  BASE_TX_OFF: 'Base station stopped transmitting (Tx OFF)',
-  BASE_OFFLINE: 'Base station offline (Offline)',
-  ALARM_SYSTEM: 'System alarm (Alarm)',
-  DISASTER_LIGHTNING: 'Damage from natural disaster / lightning',
-  PHYSICAL_DAMAGE: 'External device / structure damage',
-  OTHER: 'Other (please specify details)',
-};
+export const INCIDENT_CATEGORY_EN_LABELS: Record<IncidentCategoryCode, string> =
+  {
+    RADIO_TRANSCEIVER_FAIL: 'Radio cannot transmit/receive',
+    POWER_ON_FAIL: 'Device will not power on',
+    BATTERY_BACKUP_FAIL: 'Battery / backup power failure',
+    DISPLAY_FAULT: 'Display not working / status light fault',
+    CONTROL_FAULT: 'Buttons / control panel unresponsive',
+    ANTENNA_DAMAGED: 'Antenna / signal cable damaged',
+    BASE_TX_OFF: 'Base station stopped transmitting (Tx OFF)',
+    BASE_OFFLINE: 'Base station offline (Offline)',
+    ALARM_SYSTEM: 'System alarm (Alarm)',
+    DISASTER_LIGHTNING: 'Damage from natural disaster / lightning',
+    PHYSICAL_DAMAGE: 'External device / structure damage',
+    OTHER: 'Other (please specify details)',
+  };
 
 /**
  * รองรับรหัสหมวดหมู่เดิมในประวัติ (backward-compatibility เมื่อแสดงผลงานเก่าที่ยังไม่ถูก migrate)
