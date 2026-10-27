@@ -47,6 +47,10 @@ npm install
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI `transfer:prd:images`**: ตรวจพื้นที่ว่างบน `$DEPLOY_PATH` (≥ ~3 GiB) ก่อน `scp` image tar — กัน fail แบบ `scp: write remote … Failure` เมื่อ `/home` เต็ม; เอกสารแนะนำ `DEPLOY_PATH_PRD=/opt/dtrs-app`
+
 ---
 
 ## [0.10.0] - 2026-10-27

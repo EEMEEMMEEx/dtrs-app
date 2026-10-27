@@ -86,7 +86,7 @@
 | ☐ | `DEPLOY_SERVER_UAT` | `staging` | `nurdin@192.168.0.115` | ✅ |
 | ☐ | `DEPLOY_PATH_UAT` | `staging` | `/home/nurdin/dtrs-app` | ✅ |
 | ☐ | `DEPLOY_SERVER_PRD` | `production` | `nurdin@192.168.0.128` | ✅ |
-| ☐ | `DEPLOY_PATH_PRD` | `production` | `/home/nurdin/dtrs-app` | ✅ |
+| ☐ | `DEPLOY_PATH_PRD` | `production` | **`/opt/dtrs-app`** (อย่าใช้ `/home/...` ถ้าพาร์ติชัน `/home` เล็ก — `.128` เคยเต็มแล้ว `scp` fail) | ✅ |
 
 ### กลุ่ม D2 — ยังอยู่ใน `.gitlab-ci.yml` (override ได้ถ้าต้องการ)
 
@@ -276,7 +276,7 @@ CRON_SECRET=***
 - [ ] `DOCKER_HOST=tcp://127.0.0.1:2375 docker ps` บน `.115`
 
 **Deploy path บน `.115` (UAT):** `/home/nurdin/dtrs-app` ✅  
-**Deploy path บน `.128` (PRD):** `/home/nurdin/dtrs-app` — Variables กำลังเตรียม · **SSH key production เลื่อน** · ต้องมี Docker TCP + **`docker compose`** ก่อนกด deploy
+**Deploy path บน `.128` (PRD):** ตั้ง **`DEPLOY_PATH_PRD=/opt/dtrs-app`** (filesystem ใหญ่ — อย่าใช้ `/home` ถ้าเต็มง่าย) · ต้องมี Docker TCP + **`docker compose`** ก่อนกด deploy
 
 ---
 
