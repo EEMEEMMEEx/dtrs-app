@@ -27,10 +27,6 @@ function getApiErrorMessageFromBody(raw: unknown): string | undefined {
   return undefined;
 }
 
-/** Dark Glass — สอดคล้อง AGENTS.md */
-const GLASS_CARD =
-  "rounded-2xl border border-white/10 bg-slate-900/50 backdrop-blur-md shadow-2xl ring-1 ring-white/5";
-
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -96,7 +92,7 @@ export default function LoginPage() {
     <PublicLayoutShell subtitle="เข้าสู่ระบบ">
       <div className="w-full min-h-[60vh] flex items-center justify-center">
         <div className="w-full max-w-md animate-fade-up min-w-0">
-          <div className={`relative overflow-hidden ${GLASS_CARD}`}>
+          <div className="glass-card relative overflow-hidden ring-1 ring-[var(--glass-card-border)]">
             <div
               className="h-1 bg-linear-to-r from-blue-600 via-blue-500 to-blue-400 shrink-0"
               aria-hidden
@@ -105,13 +101,13 @@ export default function LoginPage() {
             {/* Overlay โหลด — กันคลิกซ้ำและบอกสถานะชัด */}
             {loading && (
               <div
-                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-2xl bg-slate-950/55 backdrop-blur-[3px]"
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-2xl bg-[var(--glass-page-bg)]/55 backdrop-blur-[3px]"
                 role="status"
                 aria-live="polite"
                 aria-label="กำลังเข้าสู่ระบบ"
               >
                 <span
-                  className="login-loading-spin inline-flex animate-spin text-blue-400"
+                  className="login-loading-spin inline-flex animate-spin text-blue-600 dark:text-blue-400"
                   aria-hidden
                 >
                   <LoaderCircle
@@ -120,7 +116,7 @@ export default function LoginPage() {
                     aria-hidden
                   />
                 </span>
-                <p className="text-sm font-medium text-slate-200">
+                <p className="text-sm font-medium glass-text">
                   กำลังเข้าสู่ระบบ...
                 </p>
               </div>
@@ -128,28 +124,28 @@ export default function LoginPage() {
 
             <div className="p-6 sm:p-8 sm:py-10">
               <div className="mb-6 text-center">
-                <p className="text-[11px] font-semibold tracking-[0.25em] uppercase text-blue-400/90 mb-2">
+                <p className="text-[11px] font-semibold tracking-[0.25em] uppercase text-blue-700/90 mb-2 dark:text-blue-400/90">
                   STAFF &amp; ADMIN
                 </p>
-                <h1 className="text-2xl font-semibold tracking-tight text-white mb-1">
+                <h1 className="text-2xl font-semibold tracking-tight glass-text mb-1">
                   ระบบจัดการงานซ่อม
                 </h1>
-                <p className="text-sm text-slate-400">
-                  สำหรับเจ้าหน้าที่และผู้ดูแลระบบ CCTV
+                <p className="text-sm glass-muted-text">
+                  สำหรับเจ้าหน้าที่และผู้ดูแลระบบ
                 </p>
               </div>
 
               {error ? (
                 <Alert
                   variant="destructive"
-                  className="mb-6 rounded-xl border-red-500/25 bg-red-950/40 text-red-200 backdrop-blur-sm"
+                  className="mb-6 rounded-xl border-red-300 bg-red-50 text-red-800 backdrop-blur-sm dark:border-red-500/25 dark:bg-red-950/40 dark:text-red-200"
                 >
                   <AlertCircle
                     size={18}
-                    className="shrink-0 text-red-400"
+                    className="shrink-0 text-red-600 dark:text-red-400"
                     aria-hidden
                   />
-                  <AlertDescription className="text-red-200">{error}</AlertDescription>
+                  <AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
                 </Alert>
               ) : null}
 
@@ -161,7 +157,7 @@ export default function LoginPage() {
                 <div>
                   <Label
                     htmlFor="login-email"
-                    className="mb-1.5 block text-sm font-semibold text-slate-300"
+                    className="glass-label font-semibold"
                   >
                     อีเมล หรือ ชื่อผู้ใช้
                   </Label>
@@ -180,13 +176,14 @@ export default function LoginPage() {
                 <div>
                   <Label
                     htmlFor="login-password"
-                    className="mb-1.5 block text-sm font-semibold text-slate-300"
+                    className="glass-label font-semibold"
                   >
                     รหัสผ่าน
                   </Label>
                   <div className="relative">
                     <Input
                       id="login-password"
+                      key={showPassword ? "login-password-text" : "login-password-password"}
                       required
                       type={showPassword ? "text" : "password"}
                       className="form-input-glass h-auto min-h-11 pr-12 text-sm"
@@ -202,7 +199,7 @@ export default function LoginPage() {
                       size="icon"
                       onClick={() => setShowPassword(!showPassword)}
                       disabled={loading}
-                      className="absolute right-1 top-1/2 size-11 -translate-y-1/2 cursor-pointer text-slate-400 hover:bg-white/10 hover:text-white"
+                      className="absolute right-1 top-1/2 size-11 -translate-y-1/2 cursor-pointer glass-muted-text hover:bg-[var(--glass-hover)] hover:text-[var(--glass-text)]"
                       aria-label={
                         showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"
                       }

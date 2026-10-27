@@ -93,14 +93,17 @@ export class SettingsService {
     const row = await this.prisma.setting.findUnique({
       where: { key: APP_META_SETTING_KEY },
     });
-    return this.parseAppMetaStored(row?.value ?? null);
+    const stored = this.parseAppMetaStored(row?.value ?? null);
+    // Do not expose legacy DB version — SemVer lives in frontend/package.json.
+    return { ...stored, version: '' };
   }
 
   async updateAppMeta(dto: UpdateAppMetaDto): Promise<AppMetaPublic> {
+    // Product SemVer is frontend/package.json only — clear any legacy DB version on save.
     const next: AppMetaPublic = {
       appName: dto.appName.trim().slice(0, 120),
       companyName: dto.companyName.trim().slice(0, 120),
-      version: dto.version.trim().slice(0, 40),
+      version: '',
     };
 
     await this.prisma.setting.upsert({
@@ -138,8 +141,11 @@ export class SettingsService {
     return this.toPublic(this.parseStored(row?.value ?? null));
   }
 
-  private parseDefaultPassStored(raw: Prisma.JsonValue | null): { password: string } | null {
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  private parseDefaultPassStored(
+    raw: Prisma.JsonValue | null,
+  ): { password: string } | null {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw))
+      return null;
     const o = raw as Record<string, unknown>;
     const password = typeof o.password === 'string' ? o.password.trim() : '';
     if (!password) return null;
@@ -158,7 +164,9 @@ export class SettingsService {
     };
   }
 
-  async updateDefaultPass(dto: { password: string }): Promise<DefaultPassPublic> {
+  async updateDefaultPass(dto: {
+    password: string;
+  }): Promise<DefaultPassPublic> {
     const pwd = dto.password?.trim();
     if (!pwd) {
       return { passwordSet: false, password: 'F0rth2026@' };
@@ -236,8 +244,7 @@ export class SettingsService {
       smtpPort: (dto.smtpPort?.trim() || saved?.smtpPort || '587').trim(),
       username: (dto.username?.trim() || saved?.username || '').trim(),
       password: (dto.password?.trim() || saved?.password || '').trim(),
-      secure:
-        dto.secure !== undefined ? dto.secure : (saved?.secure ?? false),
+      secure: dto.secure !== undefined ? dto.secure : (saved?.secure ?? false),
       from: (dto.from?.trim() || saved?.from || '').trim(),
       tlsRejectUnauthorized:
         dto.tlsRejectUnauthorized !== undefined
@@ -271,7 +278,9 @@ export class SettingsService {
     return cfg;
   }
 
-  private mergeEmailTemplates(raw: Prisma.JsonValue | null): EmailTemplatesSettings {
+  private mergeEmailTemplates(
+    raw: Prisma.JsonValue | null,
+  ): EmailTemplatesSettings {
     const base = defaultEmailTemplatesSettings();
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
       return base;
@@ -296,7 +305,9 @@ export class SettingsService {
             .map((s) => s.trim())
             .filter(Boolean)
         : [];
-      const rawRoleIds = Array.isArray(bb.notifyRoleIds) ? bb.notifyRoleIds : [];
+      const rawRoleIds = Array.isArray(bb.notifyRoleIds)
+        ? bb.notifyRoleIds
+        : [];
       const notifyRoleIds = rawRoleIds
         .map((x) =>
           typeof x === 'number' && Number.isInteger(x)
@@ -387,7 +398,9 @@ export class SettingsService {
   }
 
   private normalizeObjectKeyInput(raw: string): string | null {
-    const trimmed = String(raw || '').trim().replace(/^\/+/, '');
+    const trimmed = String(raw || '')
+      .trim()
+      .replace(/^\/+/, '');
     if (!trimmed) return null;
     if (trimmed.includes('\\') || trimmed.includes('..')) return null;
     const segments = trimmed.split('/');
@@ -469,7 +482,9 @@ export class SettingsService {
     const cappedLimit = Math.max(1, Math.min(1000, limit));
     const olderThanDays = Math.max(
       SettingsService.orphanRetentionDays,
-      Number.isFinite(dto.olderThanDays) ? Number(dto.olderThanDays) : SettingsService.orphanRetentionDays,
+      Number.isFinite(dto.olderThanDays)
+        ? Number(dto.olderThanDays)
+        : SettingsService.orphanRetentionDays,
     );
     const continuationToken = dto.continuationToken
       ? this.normalizeObjectKeyInput(dto.continuationToken)
@@ -520,7 +535,9 @@ export class SettingsService {
     if (continuationToken) {
       const tokenIndex = eligible.findIndex((x) => x.key === continuationToken);
       if (tokenIndex < 0) {
-        throw new BadRequestException('continuationToken ไม่ถูกต้องหรือหมดอายุ');
+        throw new BadRequestException(
+          'continuationToken ไม่ถูกต้องหรือหมดอายุ',
+        );
       }
       startIndex = tokenIndex + 1;
     }

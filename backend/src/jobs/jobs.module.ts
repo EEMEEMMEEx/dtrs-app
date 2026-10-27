@@ -12,10 +12,25 @@ import { SettingsModule } from '../settings/settings.module';
 import { RolesModule } from '../roles/roles.module';
 import { PermissionsGuard } from '../auth/permissions.guard';
 
+import { AuthModule } from '../auth/auth.module';
+
 @Module({
-    imports: [SitesModule, MinioModule, EventsModule, UsersModule, SettingsModule, RolesModule],
-    providers: [JobsService, JobsPdfService, JobEmailNotificationService, PermissionsGuard],
-    controllers: [JobsController, PublicJobsController],
-    exports: [JobsService],
+  imports: [
+    SitesModule,
+    MinioModule,
+    EventsModule,
+    UsersModule,
+    SettingsModule,
+    RolesModule,
+    AuthModule,
+  ],
+  providers: [
+    JobsService,
+    JobsPdfService,
+    JobEmailNotificationService,
+    PermissionsGuard,
+  ],
+  controllers: [JobsController, PublicJobsController],
+  exports: [JobsService],
 })
-export class JobsModule { }
+export class JobsModule {}

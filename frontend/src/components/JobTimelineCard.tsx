@@ -11,16 +11,15 @@ import {
 } from "lucide-react";
 import PersonAvatar from "@/components/PersonAvatar";
 import { formatThaiDateTimeDisplay } from "@/lib/formatThaiDateTimeDisplay";
-
-const GLASS_SECTION =
-  "rounded-2xl border border-white/10 bg-slate-900/50 backdrop-blur-md shadow-2xl p-4 sm:p-5";
+import { GLASS_SECTION } from "@/components/jobs/jobDetailStyles";
 
 export type JobTimelineJob = {
   status: string;
   reportDate?: string;
   createdAt: string;
   fixDate?: string | null;
-  ticketNo?: string;
+  ticketNo?: string | null;
+  requestTicketNo?: string | null;
   /** หัวข้อ/เรื่องที่แจ้ง — แสดงใต้ขั้นแจ้งซ่อมถ้ามี */
   title?: string;
   reporterName?: string;
@@ -258,7 +257,7 @@ function dotClass(state: StepState): string {
   if (state === "current") {
     return "border-sky-400 bg-sky-500/25 shadow-[0_0_0_3px_rgba(56,189,248,0.2)] ring-2 ring-sky-500/40";
   }
-  return "border-white/20 bg-slate-800/80";
+  return "border-[var(--glass-card-border)] bg-[var(--glass-input-bg)]";
 }
 
 /** การ์ดผู้แจ้งซ่อม — โทนเดียวกับขั้นมอบหมาย แต่เน้นรายละเอียดติดต่อ */
@@ -270,12 +269,12 @@ function ReporterContactBlock({ job }: { job: JobTimelineJob }) {
   const showPlaceholder = !name && !phone && !email;
 
   return (
-    <div className="mt-2 rounded-xl border border-white/10 bg-slate-950/40 p-3 space-y-2">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+    <div className="mt-2 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-input-bg)] p-3 space-y-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wider glass-subtle-text">
         ผู้แจ้งซ่อม
       </p>
       {showPlaceholder ? (
-        <div className="flex items-center gap-3 text-slate-500">
+        <div className="flex items-center gap-3 glass-subtle-text">
           <UserCircle2 className="h-9 w-9 shrink-0 opacity-70" aria-hidden />
           <span className="text-xs">ไม่มีข้อมูลผู้แจ้งในระบบ</span>
         </div>
@@ -293,35 +292,35 @@ function ReporterContactBlock({ job }: { job: JobTimelineJob }) {
           />
           <div className="min-w-0 flex-1 space-y-1.5">
             {name ? (
-              <p className="text-sm font-medium text-slate-100 leading-snug">
+              <p className="text-sm font-medium glass-text leading-snug">
                 {name}
               </p>
             ) : (
-              <p className="text-xs text-slate-500">ไม่ระบุชื่อ</p>
+              <p className="text-xs glass-subtle-text">ไม่ระบุชื่อ</p>
             )}
             {phone ? (
-              <p className="text-xs flex items-center gap-1.5 text-slate-400">
+              <p className="text-xs flex items-center gap-1.5 glass-muted-text">
                 <Phone
-                  className="h-3.5 w-3.5 shrink-0 text-slate-500"
+                  className="h-3.5 w-3.5 shrink-0 glass-subtle-text"
                   aria-hidden
                 />
                 <a
                   href={`tel:${phone.replace(/\s/g, "")}`}
-                  className="text-slate-300 hover:text-sky-300 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-500/40 rounded"
+                  className="glass-text hover:text-sky-500 dark:hover:text-sky-300 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-500/40 rounded"
                 >
                   {phone}
                 </a>
               </p>
             ) : null}
             {email ? (
-              <p className="text-xs flex items-center gap-1.5 text-slate-400">
+              <p className="text-xs flex items-center gap-1.5 glass-muted-text">
                 <Mail
-                  className="h-3.5 w-3.5 shrink-0 text-slate-500"
+                  className="h-3.5 w-3.5 shrink-0 glass-subtle-text"
                   aria-hidden
                 />
                 <a
                   href={`mailto:${email}`}
-                  className="text-slate-300 hover:text-sky-300 break-all underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-500/40 rounded"
+                  className="text-slate-700 hover:text-sky-600 dark:text-slate-300 dark:hover:text-sky-300 break-all underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-500/40 rounded"
                 >
                   {email}
                 </a>
@@ -349,23 +348,23 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
         className={`flex items-start justify-between gap-3 ${expanded ? "mb-4" : "mb-0"}`}
       >
         <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
-          <History className="h-5 w-5 shrink-0 text-sky-400" aria-hidden />
+          <History className="h-5 w-5 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
           <h2
             id="job-timeline-heading"
-            className="text-sm font-bold text-white tracking-tight"
+            className="text-sm font-bold glass-text tracking-tight"
           >
             ไทม์ไลน์งาน
           </h2>
-          {job.ticketNo ? (
-            <span className="text-xs font-mono text-slate-500">
-              #{job.ticketNo}
+          {job.ticketNo || job.requestTicketNo ? (
+            <span className="text-xs font-mono glass-subtle-text">
+              #{job.ticketNo || job.requestTicketNo}
             </span>
           ) : null}
         </div>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-slate-800/60 text-slate-200 shadow-sm transition-all hover:bg-slate-700/70 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 active:scale-95"
+          className="shrink-0 inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-[var(--glass-input-border)] bg-[var(--glass-input-bg)] glass-text shadow-sm transition-all hover:bg-[var(--glass-hover)] focus:outline-none focus:ring-2 focus:ring-blue-500/50 active:scale-95"
           aria-expanded={expanded}
           aria-controls={panelId}
           aria-label={expanded ? "ย่อไทม์ไลน์งาน" : "ขยายไทม์ไลน์งาน"}
@@ -379,7 +378,7 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
       </div>
 
       {!expanded ? (
-        <p className="mt-3 border-t border-white/5 pt-3 text-xs leading-relaxed text-slate-400">
+        <p className="mt-3 border-t border-[var(--glass-card-border)] pt-3 text-xs leading-relaxed glass-muted-text">
           {summaryLine}
         </p>
       ) : null}
@@ -401,7 +400,7 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
         aria-label="ลำดับเหตุการณ์ของงานตั้งแต่แจ้งจนปิดเคส"
       >
         <div
-          className="absolute left-[11px] top-3 bottom-3 w-px bg-white/10 pointer-events-none"
+          className="absolute left-[11px] top-3 bottom-3 w-px bg-[var(--glass-card-border)] pointer-events-none"
           aria-hidden
         />
         {steps.map((step) => {
@@ -423,34 +422,34 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
               </div>
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <h3 className="text-sm font-semibold text-slate-100">
+                  <h3 className="text-sm font-semibold glass-text">
                     {step.title}
                   </h3>
                   {step.state === "current" && (
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-sky-300/90">
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300/90">
                       ปัจจุบัน
                     </span>
                   )}
                   {step.state === "upcoming" && (
-                    <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                    <span className="text-[10px] font-medium uppercase tracking-wide glass-subtle-text">
                       รอ
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <p className="text-xs glass-muted-text leading-relaxed">
                   {step.detail}
                 </p>
                 {step.time ? (
-                  <p className="text-xs text-slate-500 tabular-nums">{step.time}</p>
+                  <p className="text-xs glass-subtle-text tabular-nums">{step.time}</p>
                 ) : null}
                 {isReportStep ? (
                   <>
                     {issueTitle ? (
-                      <div className="mt-2 rounded-lg border border-sky-500/20 bg-sky-950/25 px-3 py-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-400/90 mb-1">
+                      <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-500/20 dark:bg-sky-950/25">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-700 mb-1 dark:text-sky-400/90">
                           หัวข้อที่แจ้ง
                         </p>
-                        <p className="text-sm text-slate-100 leading-snug">
+                        <p className="text-sm glass-text leading-snug">
                           {issueTitle}
                         </p>
                       </div>
@@ -461,8 +460,8 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
                 {isAssignStep && step.id === "assign" ? (
                   <>
                     {step.assignMode === "delegate" && step.assigner ? (
-                      <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-950/25 p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 mb-2">
+                      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-950/25">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-800 mb-2 dark:text-amber-200/85">
                           ผู้มอบหมาย
                         </p>
                         <div className="flex items-center gap-3 min-w-0">
@@ -476,15 +475,15 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
                             nameLabel={step.assigner.name}
                             size="md"
                           />
-                          <span className="text-sm font-medium text-slate-100 truncate">
+                          <span className="text-sm font-medium glass-text truncate">
                             {step.assigner.name}
                           </span>
                         </div>
                       </div>
                     ) : null}
                     {step.assignee ? (
-                      <div className="mt-2 rounded-xl border border-white/10 bg-slate-950/40 p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                      <div className="mt-2 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-input-bg)] p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider glass-subtle-text mb-2">
                           ผู้รับผิดชอบ
                         </p>
                         <div className="flex items-center gap-3 min-w-0">
@@ -498,13 +497,13 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
                             nameLabel={step.assignee.name}
                             size="md"
                           />
-                          <span className="text-sm font-medium text-slate-100 truncate">
+                          <span className="text-sm font-medium glass-text truncate">
                             {step.assignee.name}
                           </span>
                         </div>
                       </div>
                     ) : (
-                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/40 p-3 text-slate-500">
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-input-bg)] p-3 glass-subtle-text">
                         <UserCircle2
                           className="h-9 w-9 shrink-0 opacity-70"
                           aria-hidden
@@ -520,7 +519,7 @@ export default function JobTimelineCard({ job }: { job: JobTimelineJob }) {
         })}
       </ol>
 
-      <p className="mt-2 text-[11px] leading-snug text-slate-500 border-t border-white/5 pt-3">
+      <p className="mt-2 text-[11px] leading-snug glass-subtle-text border-t border-[var(--glass-card-border)] pt-3">
         เวลาบางขั้นตอนอาจไม่แสดง — ระบบบันทึกเฉพาะข้อมูลที่มีในฐานข้อมูล (ยังไม่มีประวัติเหตุการณ์แยกต่างหาก)
       </p>
           </div>

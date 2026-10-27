@@ -16,21 +16,30 @@ import {
   Camera,
   FileDown,
   Printer,
+  Stamp,
   Wrench,
   AlertTriangle,
   Loader2,
   Clock3,
   Plus,
   Minus,
+  Tag,
 } from "lucide-react";
+import { getIncidentCategoryLabel } from "@/lib/incidentCategories";
 import DashboardPageShell from "@/components/DashboardPageShell";
 import JobTimelineCard from "@/components/JobTimelineCard";
 import ManagedImage, { MANAGED_IMAGE_SIZES } from "@/components/ManagedImage";
 import PersonAvatar from "@/components/PersonAvatar";
-import { confirmDialog, toastError, toastSuccess } from "@/lib/toast";
+import { confirmDialog, toastError, toastSuccess, toastWarning } from "@/lib/toast";
 import Select from "react-select";
-import { reactSelectGlassStyles } from "@/lib/reactSelectGlassStyles";
-import { extractAssignableArray, unwrapApiData } from "@/lib/apiResponse";
+import { getReactSelectGlassStyles } from "@/lib/reactSelectGlassStyles";
+import { useAppTheme } from "@/lib/useAppTheme";
+import {
+  axiosErrorData,
+  extractAssignableArray,
+  formatApiErrorDetail,
+  unwrapApiData,
+} from "@/lib/apiResponse";
 import { dashboardJobImagePath } from "@/lib/dashboardJobImageUrl";
 import {
   JOB_SERIAL_ROWS_MAX,
@@ -45,8 +54,27 @@ import { formatThaiDateTimeDisplay } from "@/lib/formatThaiDateTimeDisplay";
 import BackfillDateTimeFields from "@/components/jobs/BackfillDateTimeFields";
 import JobStatusBadge from "@/components/jobs/JobStatusBadge";
 import JobAssignDialog from "@/components/jobs/JobAssignDialog";
+import JobClassifyDocDialog from "@/components/jobs/JobClassifyDocDialog";
 import JobImageLightbox from "@/components/jobs/JobImageLightbox";
+import IssueImagesUploadPanel, {
+  countNonemptyIssueImages,
+  jobStatusAllowsIssueImageUpload,
+} from "@/components/jobs/IssueImagesUploadPanel";
+import SignaturePad, {
+  type SignaturePadHandle,
+} from "@/components/SignaturePad";
 import { GLASS_FIELD, GLASS_LABEL, GLASS_SECTION } from "@/components/jobs/jobDetailStyles";
+import { ensureStaffSignatureOrToast } from "@/lib/ensureStaffSignature";
+import {
+  clearFileInput,
+  JOB_IMAGE_ACCEPT,
+  JOB_IMAGE_HINT,
+  validateJobImageFile,
+} from "@/lib/jobImageUpload";
+import {
+  formatJobImageUploadError,
+  runMultipartUploadWithProxyFallback,
+} from "@/lib/jobImageProxyFallback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,14 +82,17 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { jobNeedsAssignee } from "@/lib/jobAssignEligibility";
+import { isFormalDocTicketNo } from "@/lib/docTicketNo";
 import {
   buildFixPreviewUrlsFromJob,
   hasRequiredFixImageSlots,
+  isFixInfoComplete,
 } from "@/lib/jobFixImageSlots";
 
 interface JobDetail {
   id: number;
-  ticketNo?: string;
+  ticketNo?: string | null;
+  requestTicketNo?: string | null;
   status: string;
   reportDate?: string;
   createdAt: string;
@@ -70,7 +101,9 @@ interface JobDetail {
   reporterEmail?: string;
   province?: string;
   district?: string;
+  agency?: string;
   location?: string;
+  incidentCategory?: string | null;
   description?: string;
   title?: string;
   images?: string[] | null;
@@ -120,6 +153,8 @@ function toDateTimeLocalInputValue(iso?: string | null): string {
 }
 
 export default function JobDetailPage() {
+  const { theme } = useAppTheme();
+  const selectStyles = getReactSelectGlassStyles(theme);
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { data: session } = useSession();
@@ -128,7 +163,7 @@ export default function JobDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const API =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4100/api";
   const token = (session as { accessToken?: string })?.accessToken;
 
   const [permissions, setPermissions] = useState<string[] | null>(null);
@@ -165,6 +200,7 @@ export default function JobDetailPage() {
     useRef<HTMLInputElement>(null),
   ];
   const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[] | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
 
@@ -177,6 +213,8 @@ export default function JobDetailPage() {
   const [assignSelectedId, setAssignSelectedId] = useState<number | null>(null);
   const [assignActionSaving, setAssignActionSaving] = useState(false);
   const [serverPdfDownloading, setServerPdfDownloading] = useState(false);
+  const [classifyOpen, setClassifyOpen] = useState(false);
+  const [classifySubmitting, setClassifySubmitting] = useState(false);
 
   useEffect(() => {
     const id = Number(params?.id);
@@ -216,8 +254,10 @@ export default function JobDetailPage() {
 
   const title = "รายละเอียดข้อขัดข้อง";
   const subtitle = job?.ticketNo
-    ? `เลขที่ใบแจ้งซ่อม: ${job.ticketNo}`
-    : "ดูรายละเอียดงานแจ้งซ่อม";
+    ? `เลขเอกสาร: ${job.ticketNo}${job.requestTicketNo ? ` · เลขรับแจ้ง: ${job.requestTicketNo}` : ""}`
+    : job?.requestTicketNo
+      ? `เลขรับแจ้ง: ${job.requestTicketNo}`
+      : "ดูรายละเอียดงานแจ้งซ่อม";
 
   const isResolved = job?.status === "RESOLVED";
   const userRole = (session?.user as { role?: string })?.role ?? "USER";
@@ -234,6 +274,20 @@ export default function JobDetailPage() {
   const canReopenSelf = Array.isArray(permissions) && permissions.includes("job.reopen.self");
   const canBackfillDate =
     Array.isArray(permissions) && permissions.includes("job.backfillDate");
+  const canClassifyDoc =
+    Array.isArray(permissions) && permissions.includes("job.classifyDoc");
+  const canClassifyDocContract =
+    Array.isArray(permissions) &&
+    permissions.includes("job.classifyDoc.contract");
+  const canClassifyDocOutOfContract =
+    Array.isArray(permissions) &&
+    permissions.includes("job.classifyDoc.outOfContract");
+  const canClassifyDocAny =
+    canClassifyDoc || canClassifyDocContract || canClassifyDocOutOfContract;
+  const canUploadIssueImages =
+    Array.isArray(permissions) &&
+    permissions.includes("job.issue.upload") &&
+    jobStatusAllowsIssueImageUpload(job?.status);
 
   /** ผู้รับงาน (Owner) = ผู้ที่ถูกมอบหมายในงาน (assignedTo) — Reopen/บันทึกแก้ไขได้เฉพาะคนนี้ */
   const isAssignee =
@@ -248,6 +302,8 @@ export default function JobDetailPage() {
   const [backfillFixDate, setBackfillFixDate] = useState("");
   const [backfillFixDateValid, setBackfillFixDateValid] = useState(true);
   const [backfillSaving, setBackfillSaving] = useState(false);
+  const [reporterSigReady, setReporterSigReady] = useState(false);
+  const reporterSigRef = useRef<SignaturePadHandle | null>(null);
 
   /** แก้ไข/บันทึกได้เมื่อยังไม่ปิดงาน — หลังปิดต้อง Reopen (API) ให้เป็นกำลังแก้ไขก่อน */
   const canEditFix =
@@ -325,17 +381,17 @@ export default function JobDetailPage() {
     );
   }, [brokenPartType]);
 
-  /** บังคับ: ประเภทสถานที่ + ประเภทงาน + สาเหตุ + วิธีแก้ไข + รูป 2 รูปแรก — ใช้ปิดปุ่มบันทึก */
-  const fixFormReadyToSubmit = useMemo(() => {
+  /** บังคับก่อนบันทึกการแก้ไข (ไม่รวมลายเซ็นผู้แจ้ง) */
+  const fixSaveReady = useMemo(() => {
     if (!canEditFix) return true;
-    const envOk =
-      fixEnvironment === "INDOOR" || fixEnvironment === "OUTDOOR";
-    const catOk =
-      brokenPartType === "Hardware" || brokenPartType === "Software";
-    const causeOk = cause.trim().length > 0;
-    const methodOk = fixMethod.trim().length > 0;
-    const imagesOk = hasRequiredFixImageSlots(fixImages, fixPreviews);
-    return envOk && catOk && causeOk && methodOk && imagesOk;
+    return isFixInfoComplete({
+      fixEnvironment,
+      brokenPart: brokenPartType,
+      cause,
+      fixMethod,
+      fixImageFiles: fixImages,
+      fixImagePreviews: fixPreviews,
+    });
   }, [
     canEditFix,
     fixEnvironment,
@@ -346,7 +402,21 @@ export default function JobDetailPage() {
     fixPreviews,
   ]);
 
-  const handleFixImage = (index: number, file: File | null) => {
+  const closeJobReady = fixSaveReady && reporterSigReady;
+
+  const handleFixImage = (
+    index: number,
+    file: File | null,
+    input?: HTMLInputElement | null,
+  ) => {
+    if (file) {
+      const err = validateJobImageFile(file);
+      if (err) {
+        toastError(err);
+        clearFileInput(input ?? fixFileRefs[index]?.current ?? null);
+        return;
+      }
+    }
     const imgs = [...fixImages];
     imgs[index] = file;
     const pv = [...fixPreviews];
@@ -376,86 +446,173 @@ export default function JobDetailPage() {
     );
   };
 
-  const handleSubmitFix = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!job || !token) return;
-    if (!canEditFix) {
-      toastError(
-        "สิทธิ์ไม่เพียงพอ",
-        "เฉพาะผู้รับงาน หรือผู้ดูแลระบบที่เกี่ยวข้องเท่านั้นที่บันทึกและปิดงานได้",
-      );
-      return;
-    }
+  const uploadFixForm = async (jobId: number) => {
+    const filesToUpload = fixImages.filter((f): f is File => f instanceof File);
+
+    await runMultipartUploadWithProxyFallback({
+      fields: [{ name: "fixImages", files: filesToUpload }],
+      reserveNonImageBytes: 80_000,
+      onCompressing: () =>
+        toastWarning(
+          "กำลังบีบอัดรูป",
+          "เซิร์ฟเวอร์จำกัดขนาดคำขอ — ระบบจะลดขนาดรูปแล้วส่งใหม่",
+        ),
+      upload: async (byField) => {
+        const form = new FormData();
+        form.append("brokenPartType", brokenPartType);
+        form.append("fixEnvironment", fixEnvironment);
+        form.append("cause", cause);
+        form.append("fixMethod", fixMethod);
+        form.append("note", note);
+        const ser = serializeJobSerialRowsToFormFields(serialRows);
+        form.append("oldSerialNumber", ser.oldSerialNumber);
+        form.append("newSerialNumber", ser.newSerialNumber);
+        (byField.get("fixImages") ?? []).forEach((file) =>
+          form.append("fixImages", file),
+        );
+        await axios.patch(`${API}/jobs/${jobId}/fix`, form, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      },
+    });
+  };
+
+  const applyJobDetailAfterFixSave = (data: JobDetail) => {
+    setJob(data);
+    setSerialRows(
+      parseJobSerialRowsFromDb(data.oldSerialNumber, data.newSerialNumber),
+    );
+    setFixImages([null, null, null]);
+    setFixPreviews(buildFixPreviewUrlsFromJob(data.id, data.fixImages));
+  };
+
+  const validateFixFormForSave = (): boolean => {
     if (fixEnvironment !== "INDOOR" && fixEnvironment !== "OUTDOOR") {
       toastError("ข้อมูลไม่ครบ", "กรุณาเลือกประเภทสถานที่ (Indoor / Outdoor)");
-      return;
+      return false;
     }
     if (brokenPartType !== "Hardware" && brokenPartType !== "Software") {
       toastError("ข้อมูลไม่ครบ", "กรุณาเลือกประเภทงาน (Hardware / Software)");
-      return;
+      return false;
     }
     if (!cause.trim()) {
       toastError("ข้อมูลไม่ครบ", "กรุณาระบุสาเหตุ");
-      return;
+      return false;
     }
     if (!fixMethod.trim()) {
       toastError("ข้อมูลไม่ครบ", "กรุณาระบุวิธีแก้ไข");
-      return;
+      return false;
     }
     if (!hasRequiredFixImageSlots(fixImages, fixPreviews)) {
       toastError(
         "รูปภาพไม่ครบ",
         "กรุณาแนบรูปการแก้ไขอย่างน้อย 2 รูปแรก หรือใช้รูปเดิมที่มีอยู่แล้ว",
       );
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmitFix = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!job || !token) return;
+    if (!canEditFix) {
+      toastError(
+        "สิทธิ์ไม่เพียงพอ",
+        "เฉพาะผู้รับงาน หรือผู้ดูแลระบบที่เกี่ยวข้องเท่านั้นที่บันทึกการแก้ไขได้",
+      );
       return;
     }
+    if (!(await ensureStaffSignatureOrToast(token))) return;
+    if (!validateFixFormForSave()) return;
+
     setSaving(true);
     try {
-      const form = new FormData();
-      form.append("brokenPartType", brokenPartType);
-      form.append("fixEnvironment", fixEnvironment);
-      form.append("cause", cause);
-      form.append("fixMethod", fixMethod);
-      form.append("note", note);
-      const ser = serializeJobSerialRowsToFormFields(serialRows);
-      form.append("oldSerialNumber", ser.oldSerialNumber);
-      form.append("newSerialNumber", ser.newSerialNumber);
-      const filesToUpload = fixImages.filter(
-        (f): f is File => f instanceof File,
-      );
-      filesToUpload.forEach((file) => form.append("fixImages", file));
-
-      // ไม่ต้องกำหนด Content-Type เอง เพื่อให้ axios ใส่ boundary ให้ถูกต้อง
-      await axios.patch(`${API}/jobs/${job.id}/fix`, form, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await uploadFixForm(job.id);
       toastSuccess("บันทึกข้อมูลการแก้ไขเรียบร้อยแล้ว", 1500);
-      // reload detail
       const res = await axios.get<JobDetail>(`${API}/jobs/${job.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const payload = unwrapApiData<unknown>(res?.data);
       const data = isJobDetail(payload) ? payload : null;
-      setJob(data);
-      if (data) {
-        setSerialRows(
-          parseJobSerialRowsFromDb(data.oldSerialNumber, data.newSerialNumber),
-        );
-        setFixImages([null, null, null]);
-        setFixPreviews(buildFixPreviewUrlsFromJob(data.id, data.fixImages));
-      }
-    } catch {
-      toastError("ข้อผิดพลาด", "ไม่สามารถบันทึกข้อมูลการแก้ไขได้");
+      if (data) applyJobDetailAfterFixSave(data);
+    } catch (err: unknown) {
+      const msg = formatJobImageUploadError(
+        err,
+        axios.isAxiosError(err) && err.response?.data?.message
+          ? String(
+              Array.isArray(err.response.data.message)
+                ? err.response.data.message.join(", ")
+                : err.response.data.message,
+            )
+          : "ไม่สามารถบันทึกข้อมูลการแก้ไขได้",
+      );
+      toastError("ข้อผิดพลาด", msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const reloadJob = async () => {
+  const handleCloseJob = async () => {
+    if (!job || !token) return;
+    if (!canEditFix) {
+      toastError(
+        "สิทธิ์ไม่เพียงพอ",
+        "เฉพาะผู้รับงาน หรือผู้ดูแลระบบที่เกี่ยวข้องเท่านั้นที่ปิดงานได้",
+      );
+      return;
+    }
+    if (!(await ensureStaffSignatureOrToast(token))) return;
+    if (!validateFixFormForSave()) return;
+    const sigBlob = await reporterSigRef.current?.toBlob("image/png");
+    if (!sigBlob) {
+      toastError("ข้อมูลไม่ครบ", "กรุณาเซ็นลายเซ็นผู้แจ้งก่อนปิดงาน");
+      return;
+    }
+
+    setClosing(true);
+    let fixSaved = false;
+    try {
+      await uploadFixForm(job.id);
+      fixSaved = true;
+      const closeForm = new FormData();
+      closeForm.append("reporterSignature", sigBlob, "reporter-signature.png");
+      await axios.patch(`${API}/jobs/${job.id}/close`, closeForm, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toastSuccess("ปิดงานเรียบร้อยแล้ว (สถานะ: เสร็จสิ้น)", 1800);
+      reporterSigRef.current?.clear();
+      setReporterSigReady(false);
+      await reloadJob({ silent: true });
+    } catch (err: unknown) {
+      const msg = formatJobImageUploadError(
+        err,
+        axios.isAxiosError(err) && err.response?.data?.message
+          ? String(
+              Array.isArray(err.response.data.message)
+                ? err.response.data.message.join(", ")
+                : err.response.data.message,
+            )
+          : "ไม่สามารถปิดงานได้",
+      );
+      toastError(
+        fixSaved ? "ปิดงานไม่สำเร็จ" : "ข้อผิดพลาด",
+        fixSaved
+          ? `บันทึกการแก้ไขแล้ว แต่ปิดงานไม่สำเร็จ — ${msg}`
+          : msg,
+      );
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const reloadJob = async (opts?: { silent?: boolean }): Promise<JobDetail | null> => {
     const id = Number(params?.id);
-    if (!id || !token) return;
-    setLoading(true);
-    setError(null);
+    if (!id || !token) return null;
+    if (!opts?.silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await axios.get<JobDetail>(`${API}/jobs/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -478,10 +635,12 @@ export default function JobDetailPage() {
         setFixImages([null, null, null]);
         setFixPreviews(buildFixPreviewUrlsFromJob(data.id, data.fixImages));
       }
+      return data;
     } catch {
-      setError("ไม่พบข้อมูลใบแจ้งซ่อมนี้");
+      if (!opts?.silent) setError("ไม่พบข้อมูลใบแจ้งซ่อมนี้");
+      return null;
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   };
 
@@ -595,6 +754,7 @@ export default function JobDetailPage() {
 
   const handleReopenJob = async () => {
     if (!job || !token || !reopenReason.trim()) return;
+    if (!(await ensureStaffSignatureOrToast(token))) return;
     const ok = await confirmDialog({
       title: "ยืนยัน Reopen งาน?",
       text: "สถานะจะเปลี่ยนเป็นกำลังแก้ไข เพื่อให้แก้ไขข้อมูลได้ — เมื่อแก้ครบแล้วให้บันทึกและปิดงานอีกครั้ง",
@@ -635,6 +795,7 @@ export default function JobDetailPage() {
       toastError("สิทธิ์ไม่เพียงพอ", "คุณไม่มีสิทธิ์รับงาน");
       return;
     }
+    if (!(await ensureStaffSignatureOrToast(token))) return;
     if (!jobNeedsAssignee(job)) {
       toastError("ทำรายการไม่ได้", "งานนี้มีผู้รับผิดชอบแล้ว หรือไม่สามารถรับงานในสถานะนี้ได้");
       return;
@@ -701,6 +862,7 @@ export default function JobDetailPage() {
     if (!job || !token) return;
     if (!canAssignAny) return;
     if (assignSelectedId == null) return;
+    if (!(await ensureStaffSignatureOrToast(token))) return;
 
     setAssignActionSaving(true);
     try {
@@ -761,7 +923,7 @@ export default function JobDetailPage() {
         );
       const filename = match
         ? decodeURIComponent(match[1] || match[2] || match[3] || "")
-        : `report-${job.ticketNo || job.id}.pdf`;
+        : `report-${job.ticketNo || job.requestTicketNo || job.id}.pdf`;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
@@ -775,6 +937,48 @@ export default function JobDetailPage() {
       toastError("ดาวน์โหลดไม่สำเร็จ", detail);
     } finally {
       setServerPdfDownloading(false);
+    }
+  };
+
+  const openClassifyDocDialog = async () => {
+    if (!token) return;
+    if (!(await ensureStaffSignatureOrToast(token))) return;
+    setClassifyOpen(true);
+  };
+
+  const handleClassifyDoc = async (isOutOfContract: boolean) => {
+    if (!token || !job) return;
+    if (!(await ensureStaffSignatureOrToast(token))) return;
+    setClassifySubmitting(true);
+    try {
+      await axios.patch(
+        `${API}/jobs/${job.id}/classify-doc`,
+        { isOutOfContract },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const reloaded = await reloadJob({ silent: true });
+      if (!isFormalDocTicketNo(reloaded?.ticketNo)) {
+        toastError(
+          "จำแนกเอกสารไม่สำเร็จ",
+          "ออกเลขแล้วแต่ยังอัปเดตหน้าจอไม่ได้ — กรุณารีเฟรช",
+        );
+        return;
+      }
+      toastSuccess(
+        isOutOfContract
+          ? "จำแนกเป็นนอกสัญญาแล้ว — ย้ายไปเมนูนอกสัญญา"
+          : "จำแนกเป็นในสัญญาแล้ว",
+        1800,
+      );
+      setClassifyOpen(false);
+    } catch (err) {
+      toastError(
+        "จำแนกเอกสารไม่สำเร็จ",
+        formatApiErrorDetail(axiosErrorData(err)) ??
+          "ไม่สามารถออกเลข Running Doc No ได้",
+      );
+    } finally {
+      setClassifySubmitting(false);
     }
   };
 
@@ -797,13 +1001,13 @@ export default function JobDetailPage() {
 
   return (
     <DashboardPageShell title={title} subtitle={subtitle} noCard>
-      <div className="flex-1 overflow-auto p-4 sm:p-6 bg-[#020617] min-h-0">
+      <div className="flex-1 overflow-auto p-4 sm:p-6 min-h-0">
         <div className="space-y-4 max-w-[1600px] mx-auto w-full">
           <Button
             type="button"
             variant="outline"
             onClick={() => router.back()}
-            className="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border-white/10 bg-slate-800/50 px-3.5 py-2 text-xs font-medium text-slate-300 shadow-sm hover:bg-slate-700/60 hover:text-white focus-visible:ring-2 focus-visible:ring-slate-500/20 sm:text-sm"
+            className="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] px-3.5 py-2 text-xs font-medium glass-muted-text shadow-sm hover:bg-[var(--glass-nav-hover-bg)] hover:text-[var(--glass-text)] focus-visible:ring-2 focus-visible:ring-slate-500/20 sm:text-sm"
           >
             <ArrowLeft size={16} aria-hidden /> กลับไปหน้ารายการ
           </Button>
@@ -815,18 +1019,18 @@ export default function JobDetailPage() {
           <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
             {/* คอลัมน์ซ้าย — No-Card: แยก Glass หลายก้อน */}
             <div className="space-y-4 min-w-0">
-              <h2 className="text-sm font-bold text-white tracking-tight">
+              <h2 className="text-sm font-bold glass-text tracking-tight">
                 ข้อมูลการแจ้งข้อขัดข้อง
               </h2>
               {loading ? (
                 <div className={GLASS_SECTION}>
-                  <div className="h-40 flex items-center justify-center text-sm text-slate-400">
+                  <div className="h-40 flex items-center justify-center text-sm glass-muted-text">
                     <span className="animate-pulse">กำลังโหลดข้อมูล...</span>
                   </div>
                 </div>
               ) : error || !job ? (
                 <div className={GLASS_SECTION}>
-                  <div className="h-40 flex items-center justify-center text-sm text-red-400">
+                  <div className="h-40 flex items-center justify-center text-sm text-red-600 dark:text-red-400">
                     {error ?? "ไม่พบข้อมูลใบแจ้งซ่อมนี้"}
                   </div>
                 </div>
@@ -834,7 +1038,7 @@ export default function JobDetailPage() {
                 <>
                   <div className={GLASS_SECTION}>
                     <div className="space-y-4">
-                      <div className="space-y-1 text-xs text-slate-400">
+                      <div className="space-y-1 text-xs glass-muted-text">
                         <div className="flex justify-between gap-2 items-center">
                           <span>สถานะปัจจุบัน:</span>
                           <JobStatusBadge status={job.status} />
@@ -842,7 +1046,7 @@ export default function JobDetailPage() {
                         {(job.reportDate || job.createdAt) && (
                           <div className="flex justify-between gap-2">
                             <span>วันที่แจ้ง:</span>
-                            <span className="flex items-center gap-1 text-slate-300">
+                            <span className="flex items-center gap-1 glass-muted-text">
                               <Calendar size={12} aria-hidden />
                               {formatThaiDateTimeDisplay(
                                 job.reportDate || job.createdAt,
@@ -853,7 +1057,7 @@ export default function JobDetailPage() {
                       </div>
 
                       <div>
-                        <p className="text-xs font-semibold mb-2 flex items-center gap-1 text-slate-400">
+                        <p className="text-xs font-semibold mb-2 flex items-center gap-1 glass-muted-text">
                           <User size={12} aria-hidden /> ผู้แจ้ง
                         </p>
                         <div className="flex items-start gap-3 min-w-0">
@@ -868,16 +1072,16 @@ export default function JobDetailPage() {
                             size="md"
                           />
                           <div className="min-w-0 flex-1 space-y-0.5">
-                            <p className="text-sm text-slate-100 font-medium">
+                            <p className="text-sm glass-text font-medium">
                               {job.reporterName ?? "–"}
                             </p>
                             {job.reporterPhone && (
-                              <p className="text-xs flex items-center gap-1 text-slate-400">
+                              <p className="text-xs flex items-center gap-1 glass-muted-text">
                                 <Phone size={12} aria-hidden /> {job.reporterPhone}
                               </p>
                             )}
                             {job.reporterEmail && (
-                              <p className="text-xs flex items-center gap-1 text-slate-400">
+                              <p className="text-xs flex items-center gap-1 glass-muted-text">
                                 <Mail size={12} aria-hidden /> {job.reporterEmail}
                               </p>
                             )}
@@ -886,11 +1090,16 @@ export default function JobDetailPage() {
                       </div>
 
                       <div>
-                        <p className="text-xs font-semibold mb-1 flex items-center gap-1 text-slate-400">
+                        <p className="text-xs font-semibold mb-1 flex items-center gap-1 glass-muted-text">
                           <MapPin size={12} aria-hidden /> สถานที่
                         </p>
-                        <p className="text-sm text-slate-200">
-                          {[job.province, job.district, job.location]
+                        <p className="text-sm glass-text">
+                          {[
+                            job.province,
+                            job.district,
+                            job.agency,
+                            job.location,
+                          ]
                             .filter(Boolean)
                             .join(" · ") || "–"}
                         </p>
@@ -898,7 +1107,7 @@ export default function JobDetailPage() {
 
                       {job.assignedTo && (
                         <div>
-                          <p className="text-xs font-semibold mb-2 text-slate-400">
+                          <p className="text-xs font-semibold mb-2 glass-muted-text">
                             ผู้รับผิดชอบ
                           </p>
                           <div className="flex items-center gap-3 min-w-0">
@@ -912,7 +1121,7 @@ export default function JobDetailPage() {
                               nameLabel={job.assignedTo.name}
                               size="md"
                             />
-                            <p className="text-sm text-slate-200 font-medium min-w-0 truncate">
+                            <p className="text-sm glass-text font-medium min-w-0 truncate">
                               {job.assignedTo.name}
                             </p>
                           </div>
@@ -921,77 +1130,112 @@ export default function JobDetailPage() {
                     </div>
                   </div>
 
+                  {job.incidentCategory && (
+                    <div className={GLASS_SECTION}>
+                      <p className="text-xs font-semibold mb-2 flex items-center gap-1 glass-muted-text">
+                        <Tag size={12} aria-hidden /> หัวข้อเหตุขัดข้อง
+                      </p>
+                      <p className="text-sm font-medium glass-text">
+                        {getIncidentCategoryLabel(job.incidentCategory)}
+                      </p>
+                    </div>
+                  )}
+
                   <div className={GLASS_SECTION}>
-                    <p className="text-xs font-semibold mb-2 flex items-center gap-1 text-slate-400">
+                    <p className="text-xs font-semibold mb-2 flex items-center gap-1 glass-muted-text">
                       <FileText size={12} aria-hidden /> รายละเอียดปัญหา
                     </p>
-                    <p className="text-sm text-slate-100 whitespace-pre-wrap wrap-break-word leading-relaxed">
+                    <p className="text-sm glass-text whitespace-pre-wrap wrap-break-word leading-relaxed">
                       {job.description || job.title || "–"}
                     </p>
                   </div>
 
-                  {job.images && Array.isArray(job.images) && job.images.length > 0 && (
-                    <div className={GLASS_SECTION}>
-                      <p className="text-xs font-semibold text-slate-400 mb-3">
-                        รูปภาพประกอบ
-                      </p>
+                  <div className={GLASS_SECTION}>
+                    <p className="text-xs font-semibold glass-muted-text mb-3">
+                      รูปภาพปัญหาที่แจ้ง
+                    </p>
+                    <div className="flex flex-col gap-4">
+                    {Array.isArray(job.images) &&
+                    job.images.some(
+                      (u) => typeof u === "string" && u.trim(),
+                    ) ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {job.images.slice(0, 4).map((src, i) => {
+                        {job.images.slice(0, 3).map((src, i) => {
                           if (!src) return null;
                           return (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => {
-                              if (!job) return;
-                              const slice = (job.images as string[]).slice(0, 4);
-                              const proxyUrls: string[] = [];
-                              const origIdx: number[] = [];
-                              slice.forEach((u, idx) => {
-                                if (u) {
-                                  origIdx.push(idx);
-                                  proxyUrls.push(
-                                    dashboardJobImagePath(job.id, "issue", idx),
-                                  );
-                                }
-                              });
-                              const pos = origIdx.indexOf(i);
-                              if (pos < 0) return;
-                              setPreviewImages(proxyUrls);
-                              setPreviewIndex(pos);
-                            }}
-                            className="relative w-full aspect-4/3 sm:aspect-video rounded-xl border border-white/10 overflow-hidden bg-slate-800/50 group cursor-pointer"
-                          >
-                            <ManagedImage
-                              src={dashboardJobImagePath(job.id, "issue", i)}
-                              alt={`รูปประกอบ ${i + 1}`}
-                              fill
-                              sizes={MANAGED_IMAGE_SIZES.galleryResponsiveSm}
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                            />
-                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <span className="text-white text-xs font-medium px-2 py-1 rounded-full bg-black/40 backdrop-blur-sm">
-                                คลิกเพื่อขยาย
-                              </span>
-                            </div>
-                          </button>
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => {
+                                if (!job) return;
+                                const slice = (job.images as string[]).slice(
+                                  0,
+                                  3,
+                                );
+                                const proxyUrls: string[] = [];
+                                const origIdx: number[] = [];
+                                slice.forEach((u, idx) => {
+                                  if (u) {
+                                    origIdx.push(idx);
+                                    proxyUrls.push(
+                                      dashboardJobImagePath(
+                                        job.id,
+                                        "issue",
+                                        idx,
+                                      ),
+                                    );
+                                  }
+                                });
+                                const pos = origIdx.indexOf(i);
+                                if (pos < 0) return;
+                                setPreviewImages(proxyUrls);
+                                setPreviewIndex(pos);
+                              }}
+                              className="relative w-full aspect-4/3 sm:aspect-video glass-card overflow-hidden bg-[var(--glass-card-bg)] group cursor-pointer"
+                            >
+                              <ManagedImage
+                                src={dashboardJobImagePath(job.id, "issue", i)}
+                                alt={`รูปปัญหา ${i + 1}`}
+                                fill
+                                sizes={MANAGED_IMAGE_SIZES.galleryResponsiveSm}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                              />
+                              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-white text-xs font-medium px-2 py-1 rounded-full bg-black/40 backdrop-blur-sm">
+                                  คลิกเพื่อขยาย
+                                </span>
+                              </div>
+                            </button>
                           );
                         })}
                       </div>
+                    ) : !canUploadIssueImages ? (
+                      <p className="text-xs glass-muted-text">
+                        ยังไม่มีรูปภาพที่แจ้ง
+                      </p>
+                    ) : null}
+                    <IssueImagesUploadPanel
+                      key={countNonemptyIssueImages(job.images)}
+                      jobId={job.id}
+                      token={token}
+                      canUpload={canUploadIssueImages}
+                      existingCount={countNonemptyIssueImages(job.images)}
+                      onUploaded={() => void reloadJob({ silent: true })}
+                    />
                     </div>
-                  )}
+                  </div>
                 </>
               )}
             </div>
 
             {/* คอลัมน์ขวา — No-Card: สถานะ / ฟอร์ม แยก Glass */}
             <div className="space-y-4 min-w-0">
-              <h2 className="text-sm font-bold text-white tracking-tight">
+              <h2 className="text-sm font-bold glass-text tracking-tight">
                 ข้อมูลการแก้ไข
               </h2>
 
               {job && (
-                <div className={`${GLASS_SECTION} space-y-3 text-xs text-slate-400`}>
+                <div className={`${GLASS_SECTION} space-y-3 text-xs glass-muted-text`}>
                   <div className="flex justify-between gap-2 items-center">
                     <span>สถานะปัจจุบัน:</span>
                     <JobStatusBadge status={job.status} />
@@ -999,41 +1243,55 @@ export default function JobDetailPage() {
                   {resolvedAtText && (
                     <div className="flex justify-between gap-2">
                       <span>วันที่แก้ไขล่าสุด:</span>
-                      <span className="font-semibold text-slate-200">{resolvedAtText}</span>
+                      <span className="font-semibold glass-text">{resolvedAtText}</span>
                     </div>
                   )}
                   {!job.assignedTo && job.status !== "CANCELLED" && (
                     <div className="space-y-4">
-                      <Alert className="animate-pulse-slow border-amber-500/35 bg-amber-950/30 text-amber-100/85 shadow-inner backdrop-blur-sm [&>svg]:text-amber-400">
+                      <Alert className="animate-pulse-slow border-amber-300 bg-amber-50 text-amber-950 shadow-inner backdrop-blur-sm [&>svg]:text-amber-600 dark:border-amber-500/35 dark:bg-amber-950/30 dark:text-amber-100/85 dark:[&>svg]:text-amber-400">
                         <AlertTriangle size={18} aria-hidden />
-                        <AlertTitle className="text-sm font-bold text-amber-200">
+                        <AlertTitle className="text-sm font-bold text-amber-900 dark:text-amber-200">
                           สถานะ: รอผู้รับผิดชอบ
                         </AlertTitle>
-                        <AlertDescription className="text-xs leading-relaxed text-amber-100/85">
+                        <AlertDescription className="text-xs leading-relaxed text-amber-900/90 dark:text-amber-100/85">
                           กรุณามอบหมายงานหรือรับงานนี้ก่อน จึงจะสามารถปลดล็อคแบบฟอร์มเพื่อบันทึกการแก้ไขและปิดงานได้
                         </AlertDescription>
                       </Alert>
 
                       <div className="mt-2 flex flex-col gap-2.5 sm:flex-row">
-                      {job && jobNeedsAssignee(job) && canAssignAny && (
+                        {canClassifyDocAny && !isFormalDocTicketNo(job.ticketNo) && (
+                          <button
+                            type="button"
+                            tabIndex={0}
+                            data-slot="button"
+                            disabled={classifySubmitting}
+                            onClick={() => void openClassifyDocDialog()}
+                            className="group/button shrink-0 border border-transparent bg-clip-padding whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [a]:hover:bg-primary/80 h-8 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-lg hover:bg-blue-500 focus-visible:ring-blue-500/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Stamp width={14} height={14} />
+                            จำแนกเอกสาร
+                          </button>
+                        )}
+
+                        {job && jobNeedsAssignee(job) && canAssignAny && (
                           <Button
                             type="button"
                             variant="outline"
                             onClick={openAssignModal}
                             disabled={assignActionSaving || assignLoading}
-                            className="min-h-11 flex-1 cursor-pointer rounded-xl border-sky-500/50 bg-sky-950/40 py-2.5 text-sm font-semibold text-sky-100 shadow-lg hover:bg-sky-900/50 focus-visible:ring-sky-500/30 active:scale-95"
+                            className="min-h-11 flex-1 cursor-pointer rounded-xl border-sky-400/60 bg-sky-100 py-2.5 text-sm font-semibold text-sky-900 shadow-lg hover:bg-sky-200/80 focus-visible:ring-sky-500/30 active:scale-95 dark:border-sky-500/50 dark:bg-sky-950/40 dark:text-sky-100 dark:hover:bg-sky-900/50"
                           >
                             <UserPlus size={16} className="mr-1.5 inline-block -mt-0.5" aria-hidden /> มอบหมายงาน
                           </Button>
                         )}
 
-                      {job && jobNeedsAssignee(job) && canTakeJob && (
+                        {job && jobNeedsAssignee(job) && canTakeJob && (
                           <Button
                             type="button"
                             variant="outline"
                             onClick={handleTakeJob}
                             disabled={assignActionSaving || assignLoading}
-                            className="min-h-11 flex-1 cursor-pointer rounded-xl border-white/10 bg-slate-800 py-2.5 text-sm font-semibold text-slate-100 shadow-lg hover:bg-slate-700 focus-visible:ring-slate-500/25 active:scale-95"
+                            className="min-h-11 flex-1 cursor-pointer rounded-xl border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] py-2.5 text-sm font-semibold glass-text shadow-lg hover:bg-[var(--glass-nav-hover-bg)] focus-visible:ring-slate-500/25 active:scale-95"
                           >
                             <Wrench size={16} className="mr-1.5 inline-block -mt-0.5" aria-hidden /> รับงานด้วยตนเอง
                           </Button>
@@ -1044,20 +1302,35 @@ export default function JobDetailPage() {
                   {job.assignedTo && (
                     <div className="flex justify-between gap-2">
                       <span>ผู้รับงาน (ผู้แก้ไข):</span>
-                      <span className="font-semibold text-slate-200">
+                      <span className="font-semibold glass-text">
                         {job.assignedTo.name}
                       </span>
                     </div>
                   )}
+                  {job.assignedTo && canClassifyDocAny && !isFormalDocTicketNo(job.ticketNo) && (
+                    <div className="mt-2 flex flex-col gap-2.5 sm:flex-row">
+                      <button
+                        type="button"
+                        tabIndex={0}
+                        data-slot="button"
+                        disabled={classifySubmitting}
+                        onClick={() => void openClassifyDocDialog()}
+                        className="group/button shrink-0 border border-transparent bg-clip-padding whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [a]:hover:bg-primary/80 h-8 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-lg hover:bg-blue-500 focus-visible:ring-blue-500/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Stamp width={14} height={14} />
+                        จำแนกเอกสาร
+                      </button>
+                    </div>
+                  )}
                   {isResolved && (
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                      <span className="text-sm">ไฟล์ PDF รายงาน:</span>
+                      <span className="text-sm">หลังปิดงาน:</span>
                       <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                         <a
                           href={`/print/jobs/${job.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl text-xs font-semibold border border-white/10 bg-slate-800/50 text-slate-100 hover:bg-slate-700/80 transition-all active:scale-95 shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                          className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-xl text-xs font-semibold border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] glass-text hover:bg-[var(--glass-nav-hover-bg)] transition-all active:scale-95 shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                         >
                           <Printer size={14} aria-hidden />
                           <span>เปิดหน้าพิมพ์ (เบราว์เซอร์)</span>
@@ -1069,7 +1342,7 @@ export default function JobDetailPage() {
                           disabled={serverPdfDownloading || !token}
                           aria-label="ดาวน์โหลด PDF จากเซิร์ฟเวอร์ Chromium"
                           aria-busy={serverPdfDownloading}
-                          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl border-sky-500/40 bg-sky-900/40 px-3 py-2 text-xs font-semibold text-sky-100 shadow-lg hover:bg-sky-800/50 focus-visible:ring-sky-500/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl border-sky-400/60 bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-900 shadow-lg hover:bg-sky-200/80 focus-visible:ring-sky-500/40 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-500/40 dark:bg-sky-900/40 dark:text-sky-100 dark:hover:bg-sky-800/50"
                         >
                           <FileDown size={14} aria-hidden />
                           <span>
@@ -1083,7 +1356,7 @@ export default function JobDetailPage() {
                   )}
                   {job.fixImages && Array.isArray(job.fixImages) && job.fixImages.length > 0 && (
                     <div className="pt-3 space-y-2">
-                      <span className="text-xs font-semibold text-slate-400">
+                      <span className="text-xs font-semibold glass-muted-text">
                         รูปการแก้ไข
                       </span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1111,7 +1384,7 @@ export default function JobDetailPage() {
                               setPreviewImages(proxyUrls);
                               setPreviewIndex(pos);
                             }}
-                            className="relative w-full aspect-4/3 rounded-xl border border-white/10 overflow-hidden bg-slate-800/50 group cursor-pointer"
+                            className="relative w-full aspect-4/3 glass-card overflow-hidden bg-[var(--glass-card-bg)] group cursor-pointer"
                           >
                             <ManagedImage
                               src={dashboardJobImagePath(job.id, "fix", i)}
@@ -1137,14 +1410,14 @@ export default function JobDetailPage() {
               {job && canBackfillDate && (
                 <div className={`${GLASS_SECTION} space-y-4`}>
                   <div className="flex items-start gap-2.5">
-                    <div className="mt-0.5 rounded-lg border border-cyan-500/25 bg-cyan-950/25 p-2 text-cyan-300">
+                    <div className="mt-0.5 rounded-lg border border-cyan-300 bg-cyan-50 p-2 text-cyan-700 dark:border-cyan-500/25 dark:bg-cyan-950/25 dark:text-cyan-300">
                       <Clock3 size={15} aria-hidden />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-slate-100">
+                      <h3 className="text-sm font-semibold glass-text">
                         ลงข้อมูลย้อนหลัง (Backfill วันที่)
                       </h3>
-                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                      <p className="text-xs glass-muted-text mt-1 leading-relaxed">
                         ใช้สำหรับเคสเก่า: แก้ไขวันที่แจ้ง/วันที่ปิดให้ตรงข้อมูลจริงตามเอกสารอ้างอิง
                       </p>
                     </div>
@@ -1154,13 +1427,13 @@ export default function JobDetailPage() {
                     {backfillPolicyWarnings.length > 0 ? (
                       <Alert
                         role="status"
-                        className="border-amber-500/35 bg-amber-950/25 text-amber-100/95 [&>svg]:text-amber-400"
+                        className="border-amber-300 bg-amber-50 text-amber-950 [&>svg]:text-amber-600 dark:border-amber-500/35 dark:bg-amber-950/25 dark:text-amber-100/95 dark:[&>svg]:text-amber-400"
                       >
                         <AlertTriangle size={16} aria-hidden />
-                        <AlertTitle className="text-amber-100">
+                        <AlertTitle className="text-amber-900 dark:text-amber-100">
                           ตรวจสอบวันที่ก่อนบันทึก
                         </AlertTitle>
-                        <AlertDescription className="text-amber-100/95">
+                        <AlertDescription className="text-amber-900/90 dark:text-amber-100/95">
                           <ul className="mt-1 list-inside list-disc space-y-0.5">
                             {backfillPolicyWarnings.map((w, idx) => (
                               <li key={`${idx}-${w.slice(0, 40)}`}>{w}</li>
@@ -1189,16 +1462,16 @@ export default function JobDetailPage() {
                         disabled={backfillSaving}
                       />
                     </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">
+                    <p className="text-xs glass-subtle-text leading-relaxed">
                       หมายเหตุ: วันที่ปิดย้อนหลังตั้งได้เฉพาะงานสถานะ{" "}
-                      <span className="text-slate-300 font-medium">เสร็จสิ้น (RESOLVED)</span>{" "}
+                      <span className="glass-muted-text font-medium">เสร็จสิ้น (RESOLVED)</span>{" "}
                       และต้องไม่น้อยกว่าวันที่แจ้งย้อนหลัง
                     </p>
                     <Button
                       type="submit"
                       variant="outline"
                       disabled={backfillSaving || backfillPolicyWarnings.length > 0}
-                      className="min-h-11 cursor-pointer rounded-xl border-cyan-500/35 bg-cyan-900/40 px-4 py-2.5 text-xs font-semibold text-cyan-100 shadow-lg hover:bg-cyan-800/45 focus-visible:ring-cyan-500/40 disabled:opacity-60 sm:text-sm"
+                      className="min-h-11 cursor-pointer rounded-xl border-cyan-400/50 bg-cyan-100 px-4 py-2.5 text-xs font-semibold text-cyan-900 shadow-lg hover:bg-cyan-200/80 focus-visible:ring-cyan-500/40 disabled:opacity-60 sm:text-sm dark:border-cyan-500/35 dark:bg-cyan-900/40 dark:text-cyan-100 dark:hover:bg-cyan-800/45"
                     >
                       {backfillSaving ? "กำลังบันทึกวันเวลาย้อนหลัง..." : "บันทึกวันเวลาย้อนหลัง"}
                     </Button>
@@ -1209,27 +1482,28 @@ export default function JobDetailPage() {
               {job && (
                 <div className={`${GLASS_SECTION} space-y-4`}>
                 {job.status === "CANCELLED" ? (
-                  <p className="text-sm text-slate-300 text-center py-6 px-2">
+                  <p className="text-sm glass-muted-text text-center py-6 px-2">
                     งานนี้ถูกยกเลิกแล้ว — ไม่มีการดำเนินการซ่อมต่อ และไม่สามารถบันทึกการแก้ไขหรือ Reopen ได้
                   </p>
                 ) : (canEditFix || isReadOnlyFix) ? (
+                  <>
                   <form onSubmit={handleSubmitFix} className="space-y-4">
-                    <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3 sm:p-4 space-y-3">
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        <span className="text-red-400">*</span> บังคับกรอก:{" "}
-                        <span className="text-slate-300 font-medium">
+                    <div className="glass-card p-3 sm:p-4 space-y-3">
+                      <p className="text-xs glass-muted-text leading-relaxed">
+                        <span className="text-red-600 dark:text-red-400">*</span> บังคับกรอก:{" "}
+                        <span className="glass-muted-text font-medium">
                           ประเภทสถานที่ (Indoor / Outdoor)
                         </span>
                         ,{" "}
-                        <span className="text-slate-300 font-medium">
+                        <span className="glass-muted-text font-medium">
                           ประเภทงาน (Hardware / Software)
                         </span>{" "}
                         ,{" "}
-                        <span className="text-slate-300 font-medium">สาเหตุ</span>
+                        <span className="glass-muted-text font-medium">สาเหตุ</span>
                         ,{" "}
-                        <span className="text-slate-300 font-medium">วิธีแก้ไข</span>
+                        <span className="glass-muted-text font-medium">วิธีแก้ไข</span>
                         และแนบรูป 2 รูปแรก — เลือกประเภทสถานที่ก่อน จึงจะเลือกประเภทงานได้
-                        หมายเหตุและ Serial ไม่บังคับ
+                        หมายเหตุและ Serial ไม่บังคับ — บันทึกการแก้ไขก่อน แล้วให้ผู้แจ้งเซ็นที่ส่วนปิดงานด้านล่าง
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
@@ -1237,7 +1511,7 @@ export default function JobDetailPage() {
                             className={GLASS_LABEL}
                             htmlFor="job-fix-environment"
                           >
-                            ประเภทสถานที่ <span className="text-red-400">*</span>
+                            ประเภทสถานที่ <span className="text-red-600 dark:text-red-400">*</span>
                           </Label>
                           <Select
                             inputId="job-fix-environment"
@@ -1254,7 +1528,7 @@ export default function JobDetailPage() {
                             isDisabled={isReadOnlyFix}
                             isClearable
                             placeholder="เลือก Indoor / Outdoor"
-                            styles={reactSelectGlassStyles}
+                            styles={selectStyles}
                             menuPortalTarget={
                               typeof document !== "undefined"
                                 ? document.body
@@ -1269,7 +1543,7 @@ export default function JobDetailPage() {
                             className={GLASS_LABEL}
                             htmlFor="job-fix-category"
                           >
-                            ประเภทงาน <span className="text-red-400">*</span>
+                            ประเภทงาน <span className="text-red-600 dark:text-red-400">*</span>
                           </Label>
                           <Select
                             inputId="job-fix-category"
@@ -1288,7 +1562,7 @@ export default function JobDetailPage() {
                                 ? "เลือก Hardware / Software"
                                 : "เลือกประเภทสถานที่ก่อน"
                             }
-                            styles={reactSelectGlassStyles}
+                            styles={selectStyles}
                             menuPortalTarget={
                               typeof document !== "undefined"
                                 ? document.body
@@ -1302,7 +1576,7 @@ export default function JobDetailPage() {
                     </div>
                     <div>
                       <Label className={GLASS_LABEL} htmlFor="job-cause">
-                        สาเหตุ <span className="text-red-400">*</span>
+                        สาเหตุ <span className="text-red-600 dark:text-red-400">*</span>
                       </Label>
                       <Input
                         id="job-cause"
@@ -1316,7 +1590,7 @@ export default function JobDetailPage() {
                     </div>
                     <div>
                       <Label className={GLASS_LABEL} htmlFor="job-fix-method">
-                        วิธีแก้ไข <span className="text-red-400">*</span>
+                        วิธีแก้ไข <span className="text-red-600 dark:text-red-400">*</span>
                       </Label>
                       <Textarea
                         id="job-fix-method"
@@ -1344,9 +1618,9 @@ export default function JobDetailPage() {
                       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
                         <p
                           id="job-serial-hint"
-                          className="text-xs text-slate-500 leading-relaxed flex-1"
+                          className="text-xs glass-subtle-text leading-relaxed flex-1"
                         >
-                          <span className="text-slate-400 font-medium">S/N:</span>{" "}
+                          <span className="glass-muted-text font-medium">S/N:</span>{" "}
                           รับเฉพาะ A–Z / 0–9 / - (ตัวพิมพ์เล็กเป็นตัวใหญ่อัตโนมัติ อักขระอื่นถูกตัด)
                           — เพิ่มได้สูงสุด {JOB_SERIAL_ROWS_MAX} แถว
                         </p>
@@ -1355,7 +1629,7 @@ export default function JobDetailPage() {
                             type="button"
                             onClick={addSerialRow}
                             disabled={serialRows.length >= JOB_SERIAL_ROWS_MAX}
-                            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] sm:min-w-0 px-3 rounded-xl border border-white/15 bg-slate-800/80 text-slate-200 text-xs font-semibold hover:bg-slate-700/90 transition-all active:scale-95 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                            className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] sm:min-w-0 px-3 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] glass-text text-xs font-semibold hover:bg-[var(--glass-nav-hover-bg)] transition-all active:scale-95 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer shrink-0"
                             aria-label="เพิ่มแถว Serial Number"
                           >
                             <Plus size={16} aria-hidden />
@@ -1367,17 +1641,17 @@ export default function JobDetailPage() {
                         {serialRows.map((row, idx) => (
                           <div
                             key={idx}
-                            className="rounded-xl border border-white/10 bg-slate-950/35 p-3 sm:p-4 space-y-3"
+                            className="glass-card p-3 sm:p-4 space-y-3"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide glass-subtle-text">
                                 อุปกรณ์ {idx + 1}
                               </span>
                               {!isReadOnlyFix && serialRows.length > 1 && (
                                 <button
                                   type="button"
                                   onClick={() => removeSerialRow(idx)}
-                                  className="inline-flex items-center justify-center min-h-10 min-w-10 rounded-lg border border-white/10 text-slate-400 hover:text-red-300 hover:border-red-500/30 hover:bg-red-950/20 transition-colors cursor-pointer"
+                                  className="inline-flex items-center justify-center min-h-10 min-w-10 rounded-lg border border-[var(--glass-card-border)] glass-muted-text hover:text-red-600 hover:border-red-400/50 hover:bg-red-50 transition-colors cursor-pointer dark:hover:text-red-300 dark:hover:border-red-500/30 dark:hover:bg-red-950/20"
                                   aria-label={`ลบแถวอุปกรณ์ ${idx + 1}`}
                                 >
                                   <Minus size={18} aria-hidden />
@@ -1404,7 +1678,6 @@ export default function JobDetailPage() {
                                   })
                                 }
                                 disabled={isReadOnlyFix}
-                                placeholder="เช่น DVR / กล้องหน้าประตู"
                                 aria-describedby="job-serial-hint"
                               />
                             </div>
@@ -1470,17 +1743,17 @@ export default function JobDetailPage() {
                       <div>
                         <span className={GLASS_LABEL}>
                           รูปการแก้ไข{" "}
-                          <span className="text-slate-400 font-normal">
-                            (บังคับ 2 รูปแรก — ใช้รูปเดิมได้ / อัปโหลดใหม่เพื่อเปลี่ยน)
+                          <span className="glass-muted-text font-normal">
+                            (บังคับ 2 รูปแรก — ใช้รูปเดิมได้ / อัปโหลดใหม่เพื่อเปลี่ยน) · {JOB_IMAGE_HINT}
                           </span>
                         </span>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mt-1">
                           {[0, 1, 2].map((i) => (
                             <div key={i} className="flex flex-col group">
-                              <p className="text-[11px] mb-1.5 font-medium text-slate-400">
+                              <p className="text-[11px] mb-1.5 font-medium glass-muted-text">
                                 รูปที่ {i + 1}{" "}
                                 {i < 2 && (
-                                  <span className="text-red-400">*</span>
+                                  <span className="text-red-600 dark:text-red-400">*</span>
                                 )}
                               </p>
                               <div
@@ -1488,11 +1761,11 @@ export default function JobDetailPage() {
                                 className={`relative aspect-square rounded-2xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer overflow-hidden transition-all duration-200 ${
                                   fixPreviews[i]
                                     ? "border-transparent bg-transparent"
-                                    : "border-white/20 bg-slate-900/30"
+                                    : "border-[var(--glass-card-border)] bg-[var(--glass-card-bg)]"
                                 }`}
                               >
                                 {!fixPreviews[i] && (
-                                  <div className="absolute inset-0 group-hover:bg-slate-800/40 transition-colors" />
+                                  <div className="absolute inset-0 group-hover:bg-[var(--glass-card-bg)] transition-colors" />
                                 )}
                                 {fixPreviews[i] ? (
                                   <>
@@ -1510,7 +1783,7 @@ export default function JobDetailPage() {
                                     </div>
                                   </>
                                 ) : (
-                                  <div className="flex flex-col items-center gap-1.5 z-10 text-slate-400 group-hover:text-sky-400 transition-colors">
+                                  <div className="flex flex-col items-center gap-1.5 z-10 glass-muted-text group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
                                     <Camera size={22} aria-hidden />
                                     <span className="text-[10px] font-medium uppercase tracking-wider">
                                       Upload
@@ -1519,13 +1792,14 @@ export default function JobDetailPage() {
                                 )}
                                 <input
                                   type="file"
-                                  accept="image/*"
+                                  accept={JOB_IMAGE_ACCEPT}
                                   className="hidden"
                                   ref={fixFileRefs[i]}
                                   onChange={(e) =>
                                     handleFixImage(
                                       i,
                                       e.target.files?.[0] || null,
+                                      e.target,
                                     )
                                   }
                                 />
@@ -1536,43 +1810,45 @@ export default function JobDetailPage() {
                       </div>
                     )}
                     {canEditFix ? (
-                      <Button
-                        type="submit"
-                        variant="default"
-                        disabled={saving || !fixFormReadyToSubmit}
-                        className="mt-3 w-full cursor-pointer rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-lg hover:bg-blue-700 focus-visible:ring-blue-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
-                      >
-                        {saving ? "กำลังบันทึก..." : "บันทึกและปิดงาน (สถานะ: เสร็จสิ้น)"}
-                      </Button>
+                      <>
+                        <Button
+                          type="submit"
+                          variant="default"
+                          disabled={saving || closing || !fixSaveReady}
+                          className="mt-3 w-full cursor-pointer rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-lg hover:bg-blue-700 focus-visible:ring-blue-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+                        >
+                          {saving ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                        </Button>
+                      </>
                     ) : isResolved && (canReopenAny || (canReopenSelf && isAssignee)) ? (
-                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-white/15 text-slate-300 bg-slate-800/40 backdrop-blur-sm">
+                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-[var(--glass-card-border)] glass-muted-text bg-[var(--glass-card-bg)] backdrop-blur-sm">
                         งานนี้ถูกปิดแล้ว — หากต้องการแก้ไขข้อมูลการแก้ไข ให้ใช้ขั้นตอน Reopen ด้านล่าง
                       </div>
                     ) : isResolved ? (
-                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-white/15 text-slate-400 bg-slate-800/40 backdrop-blur-sm">
+                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-[var(--glass-card-border)] glass-muted-text bg-[var(--glass-card-bg)] backdrop-blur-sm">
                         งานนี้ปิดแล้ว — ข้อมูลการแก้ไขเป็นโหมดอ่านอย่างเดียว — หากต้องการแก้ไข ให้ติดต่อผู้รับงานหรือผู้ดูแลระบบ
                       </div>
                     ) : job && job.status === "PENDING" ? (
-                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-amber-500/25 text-amber-100/90 bg-amber-950/20 backdrop-blur-sm">
+                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-amber-300 text-amber-900 bg-amber-50 backdrop-blur-sm dark:border-amber-500/25 dark:text-amber-100/90 dark:bg-amber-950/20">
                         งานสถานะรอดำเนินการ (PENDING) ยังปิดงานไม่ได้ — กรุณามอบหมายงานก่อนเพื่อเปลี่ยนเป็นกำลังแก้ไข
                       </div>
                     ) : job && !job.assignedTo ? (
-                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-amber-500/25 text-amber-100/90 bg-amber-950/20 backdrop-blur-sm">
+                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-amber-300 text-amber-900 bg-amber-50 backdrop-blur-sm dark:border-amber-500/25 dark:text-amber-100/90 dark:bg-amber-950/20">
                         ยังไม่มีผู้รับผิดชอบงาน — มอบหมายหรือรับงานด้านบนก่อน จึงจะบันทึกการแก้ไขและปิดงานได้
                       </div>
                     ) : (
-                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-white/15 text-slate-400 bg-slate-800/40 backdrop-blur-sm">
+                      <div className="w-full mt-3 py-3 rounded-xl text-xs sm:text-sm font-medium text-center border border-dashed border-[var(--glass-card-border)] glass-muted-text bg-[var(--glass-card-bg)] backdrop-blur-sm">
                         เฉพาะผู้รับงานที่ถูกมอบหมายเท่านั้นที่บันทึกและปิดงานได้
                       </div>
                     )}
 
                     {job && isResolved && (canReopenAny || (canReopenSelf && isAssignee)) && (
-                      <div className="rounded-xl border border-orange-500/35 bg-orange-950/25 backdrop-blur-md p-4 flex flex-col gap-3 text-xs sm:text-sm mt-4 shadow-lg">
-                        <div className="font-semibold text-orange-200">
+                      <div className="rounded-xl border border-orange-300 bg-orange-50 backdrop-blur-md p-4 flex flex-col gap-3 text-xs sm:text-sm mt-4 shadow-lg dark:border-orange-500/35 dark:bg-orange-950/25">
+                        <div className="font-semibold text-orange-900 dark:text-orange-200">
                           Reopen เพื่อเปลี่ยนสถานะเป็น &quot;กำลังแก้ไข&quot; แล้วจึงแก้ไขข้อมูลได้
                         </div>
                         <Textarea
-                          className="w-full rounded-xl border border-orange-500/30 bg-slate-900/50 px-3 py-2 text-xs text-slate-100 placeholder:text-orange-200/40 focus-visible:border-orange-400/60 focus-visible:ring-orange-500/25 sm:text-sm"
+                          className="w-full rounded-xl border border-orange-300 bg-[var(--glass-card-bg)] px-3 py-2 text-xs glass-text placeholder:text-orange-700/50 focus-visible:border-orange-400/60 focus-visible:ring-orange-500/25 sm:text-sm dark:border-orange-500/30 dark:placeholder:text-orange-200/40"
                           rows={2}
                           placeholder="ระบุเหตุผลในการ Reopen เช่น ต้องแก้ไขรายละเอียดวิธีการแก้ไข หรืออัปเดตรูปเพิ่มเติม"
                           value={reopenReason}
@@ -1596,8 +1872,47 @@ export default function JobDetailPage() {
                       </div>
                     )}
                   </form>
+
+                  {canEditFix && (
+                    <div className="glass-card p-3 sm:p-4 space-y-3 mt-4 border border-emerald-300/40 dark:border-emerald-500/25">
+                      <div>
+                        <p className="text-sm font-semibold glass-text">
+                          ปิดงาน — ลายเซ็นผู้แจ้ง
+                        </p>
+                        <p className="text-xs glass-muted-text mt-1 leading-relaxed">
+                          ให้ผู้แจ้งปัญหาเซ็นบนอุปกรณ์นี้ (มือถือ/แท็บเล็ต/แล็ปท็อป) หลังบันทึกการแก้ไขครบแล้ว
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className={GLASS_LABEL}>
+                          ลายเซ็นผู้แจ้ง <span className="text-red-600 dark:text-red-400">*</span>
+                        </Label>
+                        <SignaturePad
+                          handleRef={reporterSigRef}
+                          height={160}
+                          onStrokeChange={setReporterSigReady}
+                          disabled={saving || closing}
+                        />
+                      </div>
+                      {!fixSaveReady && (
+                        <p className="text-xs text-amber-800 dark:text-amber-200/90">
+                          กรุณากรอกและบันทึกข้อมูลการแก้ไขให้ครบก่อนปิดงาน
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="default"
+                        onClick={() => void handleCloseJob()}
+                        disabled={saving || closing || !closeJobReady}
+                        className="w-full cursor-pointer rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white shadow-lg hover:bg-emerald-700 focus-visible:ring-emerald-500/40 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+                      >
+                        {closing ? "กำลังปิดงาน..." : "ปิดงาน (สถานะ: เสร็จสิ้น)"}
+                      </Button>
+                    </div>
+                  )}
+                  </>
                 ) : (
-                  <p className="text-xs text-slate-400 text-center py-2">
+                  <p className="text-xs glass-muted-text text-center py-2">
                     ข้อมูลการแก้ไขถูกบันทึกแล้ว — การ Reopen/แก้ไขเพิ่มทำได้ตามสิทธิ์ที่กำหนดในบทบาท หากคุณไม่สามารถดำเนินการได้ โปรดติดต่อผู้ดูแลระบบ
                   </p>
                 )}
@@ -1620,13 +1935,25 @@ export default function JobDetailPage() {
       <JobAssignDialog
         open={assignOpen}
         onOpenChange={setAssignOpen}
-        ticketNo={job?.ticketNo}
+        ticketNo={job?.requestTicketNo || job?.ticketNo || undefined}
         assignLoading={assignLoading}
         assignOptions={assignOptions}
         assignSelectedId={assignSelectedId}
         onSelectStaff={setAssignSelectedId}
         assignActionSaving={assignActionSaving}
         onSubmit={() => void handleAssignSubmit()}
+      />
+
+      <JobClassifyDocDialog
+        open={classifyOpen}
+        onOpenChange={(open) => {
+          if (!open && !classifySubmitting) setClassifyOpen(false);
+        }}
+        ticketNo={job?.requestTicketNo || job?.ticketNo || undefined}
+        submitting={classifySubmitting}
+        canClassifyContract={canClassifyDocContract || canClassifyDoc}
+        canClassifyOutOfContract={canClassifyDocOutOfContract || canClassifyDoc}
+        onConfirm={(isOutOfContract) => void handleClassifyDoc(isOutOfContract)}
       />
     </DashboardPageShell>
   );

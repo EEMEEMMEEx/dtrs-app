@@ -2,10 +2,16 @@
 
 export type JobEmailPayload = {
   ticketNo: string | null;
-  /** แสดงในอีเมล: หัวข้อหรือรายละเอียดข้อขัดข้อง (title ก่อน แล้วค่อย description) */
+  requestTicketNo?: string | null;
+  /** แสดงในอีเมล: หัวข้อหรือรายละเอียดเพิ่มเติม (title ก่อน แล้วค่อย description) */
   issueSummary: string | null;
+  /** ป้ายภาษาไทยของหัวข้อเหตุขัดข้อง (13 stable codes); null/undefined = งานเก่าหรือไม่ได้เลือก */
+  incidentCategoryLabel?: string | null;
   province: string | null;
   district: string | null;
+  /** สถานที่/หน่วยงาน (denormalize จาก Site) */
+  agency: string | null;
+  /** ชื่อสถานี */
   location: string | null;
   /** ประเภทสถานที่ (หลังมีการบันทึกการแก้ไข) */
   fixEnvironmentLabel: string | null;
@@ -21,6 +27,11 @@ export type JobEmailPayload = {
   dashboardUrl: string;
   publicStatusUrl: string;
 };
+
+function formatLocationLine(p: JobEmailPayload): string {
+  const place = [p.agency, p.location].filter(Boolean).join(' · ');
+  return [p.province, p.district, place].filter(Boolean).join(' · ') || '—';
+}
 
 function esc(s: string | null | undefined): string {
   if (s == null || s === '') return '—';
@@ -84,15 +95,19 @@ function wrapBody(opts: {
   payload: JobEmailPayload;
   extraRows?: string;
 }): string {
-  const { brandingLogoUrl, accentTitle, subtitle, payload, extraRows = '' } = opts;
+  const {
+    brandingLogoUrl,
+    accentTitle,
+    subtitle,
+    payload,
+    extraRows = '',
+  } = opts;
   const logoBlock =
     brandingLogoUrl && /^https?:\/\//i.test(brandingLogoUrl.trim())
       ? `<img src="${esc(brandingLogoUrl.trim())}" alt="Logo" width="160" style="max-width:200px;height:auto;display:block;margin:0 auto 20px;border:0;" />`
       : `<div style="text-align:center;font-size:20px;font-weight:700;color:#0369a1;letter-spacing:0.02em;margin-bottom:16px;">CCTV Maintenance</div>`;
 
-  const loc =
-    [payload.province, payload.district, payload.location].filter(Boolean).join(' · ') ||
-    '—';
+  const loc = formatLocationLine(payload);
 
   return `<!DOCTYPE html>
 <html lang="th">
@@ -113,7 +128,8 @@ function wrapBody(opts: {
             <td style="padding:0 16px 8px;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
                 ${rowText('เลขที่ใบแจ้ง', esc(payload.ticketNo))}
-                ${rowText('เรื่อง / ข้อขัดข้อง', esc(payload.issueSummary))}
+                ${rowText('หัวข้อเหตุขัดข้อง', esc(payload.incidentCategoryLabel))}
+                ${rowText('รายละเอียดเพิ่มเติม', esc(payload.issueSummary))}
                 ${rowText('สถานที่', esc(loc))}
                 ${rowText('ประเภทสถานที่', esc(payload.fixEnvironmentLabel))}
                 ${rowText('ประเภทงาน', esc(payload.jobTypeLabel))}
@@ -135,7 +151,7 @@ function wrapBody(opts: {
           </tr>
           <tr>
             <td style="padding:0 28px 24px;border-top:1px solid #e2e8f0;background:#ffffff;">
-              <p style="margin:16px 0 0;font-size:11px;color:#94a3b8;text-align:center;">Forth Co., Ltd. · ระบบแจ้งซ่อม CCTV</p>
+              <p style="margin:16px 0 0;font-size:11px;color:#94a3b8;text-align:center;">Forth Co., Ltd. · ระบบแจ้งซ่อม</p>
             </td>
           </tr>
         </table>
@@ -148,7 +164,7 @@ function wrapBody(opts: {
 
 /** ต่อท้าย subject ด้วยที่ตั้งสั้นๆ ให้สแกนกล่องจดหมายรู้เรื่อง */
 function subjectLocationSuffix(p: JobEmailPayload): string {
-  const line = [p.province, p.district, p.location].filter(Boolean).join(' - ');
+  const line = formatLocationLine(p).replace(/ · /g, ' - ');
   if (!line.trim()) return '';
   const max = 42;
   const short = line.length > max ? `${line.slice(0, max - 1)}…` : line;

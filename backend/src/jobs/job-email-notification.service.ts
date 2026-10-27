@@ -9,6 +9,7 @@ import {
   buildReportedEmailHtml,
   type JobEmailPayload,
 } from './job-email-html';
+import { getIncidentCategoryLabel } from './constants/incident-categories';
 
 const STATUS_TH: Record<string, string> = {
   PENDING: 'รอดำเนินการ',
@@ -17,17 +18,19 @@ const STATUS_TH: Record<string, string> = {
   CANCELLED: 'ยกเลิก',
 };
 
+/** ข้อความสำหรับแถว「รายละเอียดเพิ่มเติม」— ป้ายหมวดหมู่แยกไปแถวของตัวเองแล้ว */
 function pickIssueSummary(
   title: string | null | undefined,
   description: string | null | undefined,
 ): string | null {
   const t = title?.trim();
   if (t) return t;
-  const d = description?.trim();
-  return d || null;
+  return description?.trim() || null;
 }
 
-function formatFixEnvironmentLabel(v: string | null | undefined): string | null {
+function formatFixEnvironmentLabel(
+  v: string | null | undefined,
+): string | null {
   if (!v?.trim()) return null;
   const u = v.trim().toUpperCase();
   if (u === 'INDOOR') return 'Indoor (ในอาคาร)';
@@ -124,11 +127,14 @@ export class JobEmailNotificationService {
       select: {
         id: true,
         ticketNo: true,
+        requestTicketNo: true,
         title: true,
         description: true,
+        incidentCategory: true,
         status: true,
         province: true,
         district: true,
+        agency: true,
         location: true,
         fixEnvironment: true,
         brokenPart: true,
@@ -143,7 +149,7 @@ export class JobEmailNotificationService {
     if (!job) return null;
 
     const base = await this.resolveEmailLinkBase();
-    const ticket = job.ticketNo ?? String(job.id);
+    const ticket = job.ticketNo ?? job.requestTicketNo ?? String(job.id);
     const publicStatusUrl = `${base}/public/status?ticketNo=${encodeURIComponent(ticket)}`;
     const dashboardUrl = `${base}/dashboard/jobs/${job.id}`;
 
@@ -151,10 +157,15 @@ export class JobEmailNotificationService {
     const statusLabel = STATUS_TH[st] ?? st;
 
     return {
-      ticketNo: job.ticketNo,
+      ticketNo: job.ticketNo ?? job.requestTicketNo,
+      requestTicketNo: job.requestTicketNo,
+      incidentCategoryLabel: job.incidentCategory
+        ? getIncidentCategoryLabel(job.incidentCategory)
+        : null,
       issueSummary: pickIssueSummary(job.title, job.description),
       province: job.province,
       district: job.district,
+      agency: job.agency,
       location: job.location,
       fixEnvironmentLabel: formatFixEnvironmentLabel(job.fixEnvironment),
       jobTypeLabel: formatJobTypeLabel(job.brokenPart),
@@ -171,7 +182,9 @@ export class JobEmailNotificationService {
 
   /** อีเมลผู้ใช้ที่ผูก roleId ตามที่เลือกในการตั้งค่า (ส่งเป็น CC) */
   private async getEmailsForUserRoles(roleIds: number[]): Promise<string[]> {
-    const ids = [...new Set(roleIds)].filter((n) => Number.isInteger(n) && n > 0);
+    const ids = [...new Set(roleIds)].filter(
+      (n) => Number.isInteger(n) && n > 0,
+    );
     if (!ids.length) return [];
     const users = await this.prisma.user.findMany({
       where: { roleId: { in: ids } },
@@ -244,7 +257,13 @@ export class JobEmailNotificationService {
         payload,
         templates.brandingLogoUrl,
       );
-      await this.mailService.sendHtmlMail(smtp, { to, cc, subject, html, text });
+      await this.mailService.sendHtmlMail(smtp, {
+        to,
+        cc,
+        subject,
+        html,
+        text,
+      });
     } catch (e) {
       this.logger.warn(
         `notifyReported(${jobId}): ${e instanceof Error ? e.message : String(e)}`,
@@ -302,7 +321,13 @@ export class JobEmailNotificationService {
         payload,
         templates.brandingLogoUrl,
       );
-      await this.mailService.sendHtmlMail(smtp, { to, cc, subject, html, text });
+      await this.mailService.sendHtmlMail(smtp, {
+        to,
+        cc,
+        subject,
+        html,
+        text,
+      });
     } catch (e) {
       this.logger.warn(
         `notifyAssigned(${jobId}): ${e instanceof Error ? e.message : String(e)}`,
@@ -331,6 +356,7 @@ export class JobEmailNotificationService {
           reporterEmail: true,
           reporter: { select: { email: true } },
           ticketNo: true,
+          requestTicketNo: true,
         },
       });
       if (!job) return;
@@ -347,7 +373,10 @@ export class JobEmailNotificationService {
         block.notifyRoleIds ?? [],
       );
       // ผู้รับ CC ตามตั้งค่า + บทบาท (ต้องแนบ PDF ตาม requirement) — ต้องแยกส่งคนละฉบับ
-      const ccRecipients = this.filterCc([...block.cc, ...roleEmails], toReporter);
+      const ccRecipients = this.filterCc(
+        [...block.cc, ...roleEmails],
+        toReporter,
+      );
 
       const payload = await this.buildPayload(jobId);
       if (!payload) return;
@@ -392,7 +421,7 @@ export class JobEmailNotificationService {
           attachments: pdf
             ? [
                 {
-                  filename: `CCTV-Job-${job.ticketNo ?? jobId}.pdf`,
+                  filename: `DTRS-${job.ticketNo ?? job.requestTicketNo ?? jobId}.pdf`,
                   content: pdf,
                   contentType: 'application/pdf',
                 },

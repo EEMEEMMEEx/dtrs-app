@@ -1,36 +1,37 @@
-# Frontend - ระบบแจ้งซ่อม CCTV
+# Frontend - ระบบแจ้งซ่อม
 
 Next.js 15 (App Router) สำหรับระบบแจ้งปัญหาและจัดการการซ่อมบำรุง CCTV
 
 ## Tech Stack
 
 - **Framework:** Next.js 15 (App Router)
-- **UI:** Tailwind CSS, Lucide React, recharts
+- **UI:** Tailwind CSS, Lucide React, recharts, **next-themes** (Dark/Light toggle)
 - **Auth:** NextAuth.js (Credentials + JWT จาก Backend)
 - **HTTP:** Axios; แจ้งเตือน: SweetAlert2 (Toast ผ่าน `@/lib/toast`)
 
 ## โครงสร้างหลัก
 
 - `src/app/` — หน้าและ layout (report, status, login, dashboard)
-- `src/components/` — SiteHeader, SiteFooter, PublicLayoutShell, DashboardPageShell, DashboardFilterBar, **`CrudModal`** (portal → `document.body`, **`z-100`**, Dark Glass, พร็อพ `size` md/lg — ใช้ที่ `/dashboard/users`, `/dashboard/roles` ฯลฯ), UserMenuDropdown, SegmentedTabs, JobsList (ตารางงาน + แท็บสัญญา/นอกสัญญา **ไม่ห่อ glass ชั้นนอก** + badge งานค้าง + modal อัปเดตการแก้ไขแบบ Dark Glass + ดูรายละเอียด full page `/dashboard/jobs/:id` + มอบหมายงาน react-select / รับงาน — ปุ่มมอบหมายและย้ายนอกสัญญาอิงสิทธิ์ **`job.assign`** จาก `/roles/me/permissions`; ลบงาน PENDING ไม่มอบหมายอิง **`job.deleteUnassigned`**; รองรับ `assignedToMe` สำหรับงานที่รับผิดชอบ; ลบงาน IN_PROGRESS ที่หน้า `/dashboard/in-progress` อิง **`job.deleteInProgress`**)
-- `src/app/globals.css` — class **`form-input-glass`** สำหรับ input/textarea บนพื้นหลังแดชบอร์ดเข้ม (แยกจาก `.form-input` ที่ใช้บนฟอร์มสว่าง)
-- `src/lib/` — auth.ts (NextAuth; รูปผู้ใช้ใน session ใช้ path **`/user-images/:id`** เมื่อมีรูปในระบบ), toast.ts, **apiResponse.ts**, **`jobImageProxy.ts`** + route **`/job-images/...`**, **`userImageProxy.ts`** + route **`/user-images/[userId]`**, **`dashboardJobImageUrl.ts`** — helper path รูปงานสำหรับ `<img>` บนแดชบอร์ด
+- `src/components/` — SiteHeader (**ThemeToggle** Sun/Moon), SiteFooter, **PublicLayoutShell** (พื้นหลัง glass — ไม่มี watermark CCTV), DashboardPageShell, DashboardFilterBar, **`CrudModal`** (portal → `document.body`, **`z-100`**, Glass theme-aware, พร็อพ `size` md/lg — ใช้ที่ `/dashboard/users`, `/dashboard/roles` ฯลฯ), UserMenuDropdown, SegmentedTabs, JobsList (ตารางงาน + แท็บสัญญา/นอกสัญญาเมื่อมี **`job.viewContractTabs`** **ไม่ห่อ glass ชั้นนอก** + badge งานค้าง + ป้าย「รอเซ็นผู้แจ้ง」เมื่อ `IN_PROGRESS` และข้อมูลแก้ไขครบ + ปุ่ม Sign เปิด `JobReporterSignDialog` (`PATCH /close`, `job.fix.self|any`) + modal อัปเดตการแก้ไขแบบ Glass บันทึก `PATCH /fix` แล้วเปิด dialog เซ็น + ดูรายละเอียด full page `/dashboard/jobs/:id` + มอบหมายงาน react-select / รับงาน — ปุ่มมอบหมายและย้ายนอกสัญญาอิงสิทธิ์ **`job.assign`** จาก `/roles/me/permissions`; **จำแนกเอกสาร** บน `/dashboard/all` อิง **`job.classifyDoc`**; อัปโหลดรูปปัญหาที่แจ้งใน wrench modal อิง **`job.issue.upload`** (งาน `PENDING`/`IN_PROGRESS`, เติมถึง 3 รูป); ลบงาน PENDING ไม่มอบหมายอิง **`job.deleteUnassigned`**; รองรับ `assignedToMe` สำหรับงานที่รับผิดชอบ; ลบงาน IN_PROGRESS ที่หน้า `/dashboard/in-progress` อิง **`job.deleteInProgress`**)
+- `src/app/dashboard/page.tsx` — ภาพรวม: KPI/กราฟ/สรุปวิเคราะห์ตาม **`job.viewContractTabs`** (ไม่มีสิทธิ์ = นับเฉพาะงานในสัญญา); ส่งออก PDF ผ่าน `GET /jobs/reports/summary-pdf`- `src/app/globals.css` — **`--glass-*` tokens** + utilities (`.glass-page`, `.glass-card`, `.glass-text`) และ class **`form-input-glass`** (อ่าน `--glass-input-*` ทั้ง Dark/Light; แยกจาก `.form-input` legacy)
+- `src/lib/useAppTheme.ts` — hook อ่าน theme จาก `next-themes` (มี `mounted` guard สำหรับ hydration)
+- `src/lib/` — auth.ts (NextAuth; รูปผู้ใช้ใน session ใช้ path **`/user-images/:id`** เมื่อมีรูปในระบบ), toast.ts, **apiResponse.ts**, **`jobImageUpload.ts`** (pre-check 5MB / JPG/PNG/WebP/HEIC) + **`jobImageProxyFallback.ts`** (บีบรูป retry หลัง 413), **`jobImageProxy.ts`** + route **`/job-images/...`**, **`userImageProxy.ts`** + route **`/user-images/[userId]`**, **`dashboardJobImageUrl.ts`** — helper path รูปงานสำหรับ `<img>` บนแดชบอร์ด
 
 ### Flow สำคัญ
 
 - **/report**
   - กรอกเบอร์โทรศัพท์ได้เฉพาะตัวเลข 10 หลัก และต้องตรงกับผู้แจ้งที่มีอยู่ในระบบ (`/api/users/reporter-by-phone/:phone`) การ์ดอื่น (สถานที่, รายละเอียด, รูปภาพ) จะใช้งานได้เมื่อเบอร์โทรถูกต้องและพบผู้ใช้เท่านั้น
-  - เมื่อส่งฟอร์ม ระบบจะสร้าง `Job` ใหม่ + เลขที่ใบแจ้งซ่อม (`ticketNo` เป็นรหัส hex 8 ตัว) แสดง Toast แจ้งเลข Ticket แล้ว redirect ไปหน้า `/status?ticketNo=...`
+  - เมื่อส่งฟอร์ม ระบบจะสร้าง `Job` ใหม่ + เลขที่ใบแจ้งซ่อม (`ticketNo` ในรูปแบบ `RQ-CM-YYYYXXXX`) แสดง Toast แจ้งเลข Ticket แล้ว redirect ไปหน้า `/status?ticketNo=...`
 
 - **/status**
   - ฟอร์มค้นหารับเลขที่ใบแจ้งซ่อม แล้วเรียก `GET /api/jobs/status/:ticketNo`
   - ถ้ามี `?ticketNo=...` ใน URL จะกรอกช่องค้นหาให้อัตโนมัติและยิงค้นหาให้ทันที เพื่อรองรับการ redirect จากหน้า `/report`
 
 - **/dashboard/my-jobs**
-  - งานที่รับผิดชอบ — JobsList แสดงเฉพาะงานที่รับมอบหมายให้ผู้ใช้ปัจจุบัน; filter + DataTable
+  - งานที่รับผิดชอบ — JobsList แสดงเฉพาะงานที่รับมอบหมายให้ผู้ใช้ปัจจุบัน; filter + DataTable; ป้าย「รอเซ็นผู้แจ้ง」เมื่อแก้ครบแล้วยัง `IN_PROGRESS`; ปุ่ม Sign ปิดงานจากรายการ (`JobReporterSignDialog`)
 
 - **/dashboard/jobs/[id]**
-  - รายละเอียดงานเต็มหน้า: การ์ดข้อมูลการแจ้งข้อขัดข้อง + การ์ดข้อมูลการแก้ไข + ฟอร์มบันทึกการแก้ไข (ส่วนขัดข้อง, สาเหตุ, วิธีแก้ไข, รูปการแก้ไข สูงสุด 3 รูป, หมายเหตุ, Serial เก่า/ใหม่); **บันทึกการแก้ไข / Reopen — เฉพาะผู้รับงาน (assignee)**; Reopen มี `confirmDialog` ก่อนเรียก API; เมื่อสถานะ Resolved — พิมพ์/PDF ผ่านหน้า **`/print/jobs/[id]`** + `JobMaintenancePdfTemplate` + `print.css` (หรือดาวน์โหลด PDF ฝั่ง backend `GET /jobs/:id/report-pdf`)
+  - รายละเอียดงานเต็มหน้า: การ์ดข้อมูลการแจ้งข้อขัดข้อง (card **รูปภาพปัญหาที่แจ้ง** อัปโหลดได้เมื่อมี **`job.issue.upload`** และงาน `PENDING`/`IN_PROGRESS`; เติมถึง 3 รูป · **5MB/ไฟล์** JPG/PNG/WebP/HEIC ไม่ลบ/ไม่แทนที่) + การ์ดข้อมูลการแก้ไข + ฟอร์ม**บันทึกการแก้ไข** (`PATCH /jobs/:id/fix`, คง `IN_PROGRESS`) และบล็อกแยก **ปิดงาน — ลายเซ็นผู้แจ้ง** (`PATCH /jobs/:id/close`); **บันทึก/ปิดงาน / Reopen — ตาม RBAC** (`job.fix.*` / `job.reopen.*`); Reopen มี `confirmDialog` ก่อนเรียก API; เมื่อสถานะ Resolved — พิมพ์/PDF + **จำแนกเอกสาร** (`job.classifyDoc`, เลขเริ่มต้น `RQ-CM-YYYYXXXX`) ผ่าน `JobClassifyDocDialog`; พิมพ์ผ่านหน้า **`/print/jobs/[id]`** + `JobMaintenancePdfTemplate` + `print.css` (หรือดาวน์โหลด PDF ฝั่ง backend `GET /jobs/:id/report-pdf`)
 
 - **`/print/jobs/[id]` (พิมพ์)**
   - ข้อมูล JSON จาก **`GET /api/print-jobs/:id/data`** (Next API route); รูปในเทมเพลตใช้ **`/job-images/:id/:kind/:index`** (ไม่อยู่ใต้ `/api` — reverse proxy ส่งต่อไป Next ตาม host หลักได้โดยไม่ต้องแยก location เพิ่ม) หรือ alias **`/api/job-images/...`** ถ้าตั้ง NPM แยกเหมือน `/api/print-jobs`
@@ -59,18 +60,47 @@ npm run build
 
 ควรรันก่อน merge/deploy; โปรเจกต์หลักใช้ GitLab CI แยก build `frontend` / `backend` ตาม `.gitlab-ci.yml` ที่ root (ดู `README.md` ด้านบน)
 
+```bash
+npm test
+```
+
+ครอบคลุม `jobImageUpload.test.ts` + `jobImageProxyFallback.test.ts` (validate 5MB / 413 fallback) + `jobFixImageSlots.test.ts` (ป้ายรอเซ็นผู้แจ้ง) พร้อมเทสอื่นใน `src/lib/`
+
 ## รันพัฒนา
 
 ```bash
 npm install
+copy .env.example .env.local
 npm run dev
 ```
 
-เปิด [http://localhost:3000](http://localhost:3000) (Backend ต้องรันที่ `http://localhost:4000/api`)
+เปิด [http://localhost:3000](http://localhost:3000) (Backend ต้องรันที่ `http://localhost:4100/api`)
 
+**ตัวแปร env (local):**
+
+| ตัวแปร | ค่า dev |
+|--------|---------|
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:4100/api` |
+| `NEXTAUTH_URL` | `http://localhost:3000` |
+| `API_INTERNAL_BASE_URL` | `http://localhost:4100/api` (NextAuth / route ฝั่ง server) |
+| `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` | DSN ของ GlitchTip โปรเจกต์ **dev** (ดู `.env.example`) |
+| `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` | ว่าง = local ไม่ส่ง performance traces (ดู `.env.example`) |
+| `SENTRY_URL` | `http://192.168.0.115:8700` |
+| `NEXT_PUBLIC_APP_ENV` | `development` |
+
+PRD/Docker: ดูคอมเมนต์ใน [`.env.example`](.env.example) และ [../docs/DTRS-Migration-Checklist.md](../docs/DTRS-Migration-Checklist.md)
+
+## Theme (Dark / Light)
+
+- สลับโหมดจากไอคอน **Sun/Moon** ใน `SiteHeader` (ทุกหน้า)
+- ค่าเริ่มต้น: **Dark**; เก็บใน `localStorage` key **`dtrs-theme`**
+- Implementation: [`next-themes`](https://github.com/pacocoursey/next-themes) + CSS variables `--glass-*` ใน [`src/app/globals.css`](src/app/globals.css)
+- Hook: [`src/lib/useAppTheme.ts`](src/lib/useAppTheme.ts) (`isDark`, `theme`, `mounted`) — ใช้เมื่อต้องการค่า theme ใน JS (เช่น react-select); UI ส่วนใหญ่พึ่ง CSS tokens / `dark:` classes
+- **ข้อยกเว้น:** `/print/jobs/*` บังคับ light เสมอผ่าน [`PrintThemeShell`](src/components/PrintThemeShell.tsx) (class `.light` บน subtree — **ไม่**ซ้อน `ThemeProvider`)
+- **Contrast:** ใน light mode หลีกเลี่ยง `text-slate-100/200/300` หรือ `border-white/10` แบบไม่มีคู่ `dark:`; ใช้ `text-slate-900 dark:text-slate-100` (หรือ glass utilities ที่อ่านได้บนพื้นขาว)
 ## เอกสารเพิ่มเติม
 
 - สถานะโปรเจกต์และ API: root [STATUS.md](../STATUS.md), [README.md](../README.md) (ดัชนีเอกสาร)
-- Private MinIO + proxy รูป: [../docs/Project-Plan-Private-MinIO-Images.md](../docs/Project-Plan-Private-MinIO-Images.md), [../minio.md](../minio.md)
-- Reverse proxy (NPM): [../backend/docs/Reverse-Proxy-Nginx-Proxy-Manager.md](../backend/docs/Reverse-Proxy-Nginx-Proxy-Manager.md)
+- Private MinIO + proxy รูป: [../docs/Project-Plan-Private-MinIO-Images.md](../docs/Project-Plan-Private-MinIO-Images.md), [../docs/minio.md](../docs/minio.md)
+- Reverse proxy (NPM): [../backend/docs/Reverse-Proxy-Nginx-Proxy-Manager.md](../backend/docs/Reverse-Proxy-Nginx-Proxy-Manager.md) — `client_max_body_size 50m` ที่ `/api/`; ถ้ายังไม่ได้ตั้ง แอปบีบรูปแล้ว retry หลัง 413; path `/monitoring` ต้องไป Next `:8404` (อย่าใส่ใต้ `/api/`)
 - ดัชนีโฟลเดอร์ `docs/`: [../docs/README.md](../docs/README.md)

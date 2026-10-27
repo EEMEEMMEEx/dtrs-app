@@ -6,13 +6,14 @@ import {
 } from '@nestjs/common';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
 import { PrismaService } from '../prisma/prisma.service';
+import { RolesService } from '../roles/roles.service';
 import type { DashboardSummaryPdfQueryDto } from './dto/create-job.dto';
 
 /**
  * ค้นหา Chrome / Edge ที่ติดตั้งในเครื่อง — แก้กรณี Puppeteer ยังไม่ได้รัน
- * `npx puppeteer browsers install chrome` (cache ว่าง)
+ * `npx @puppeteer/browsers install chrome` (cache ว่าง — local dev)
  *
  * ตั้งค่าได้: PUPPETEER_EXECUTABLE_PATH หรือ CHROME_BIN
  */
@@ -69,8 +70,7 @@ function findChromeExecutable(): string | undefined {
     }
   }
   if (process.platform === 'darwin') {
-    const p =
-      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    const p = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
     if (fs.existsSync(p)) return p;
   }
   return undefined;
@@ -117,7 +117,10 @@ function findEdgeExecutable(): string | undefined {
  */
 @Injectable()
 export class JobsPdfService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rolesService: RolesService,
+  ) {}
 
   private readonly launchArgs = [
     '--no-sandbox',
@@ -149,7 +152,8 @@ export class JobsPdfService {
         args: [...this.launchArgs],
       });
     } catch (firstErr: unknown) {
-      const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+      const msg =
+        firstErr instanceof Error ? firstErr.message : String(firstErr);
       throw new InternalServerErrorException(
         `ไม่สามารถสร้าง PDF ได้: ${msg} — ติดตั้ง Google Chrome หรือ Microsoft Edge หรือตั้ง PUPPETEER_EXECUTABLE_PATH ชี้ไปที่ chrome.exe / msedge.exe หรือรันในโฟลเดอร์ backend: npx puppeteer browsers install chrome`,
       );
@@ -290,17 +294,28 @@ export class JobsPdfService {
       .replace(/'/g, '&#39;');
   }
 
-  async generateDashboardSummaryPdf(query: DashboardSummaryPdfQueryDto): Promise<{
+  async generateDashboardSummaryPdf(
+    query: DashboardSummaryPdfQueryDto,
+    actorUserId: number,
+  ): Promise<{
     buffer: Buffer;
     filename: string;
   }> {
     const { start, end, labelTh } = this.parseSummaryRange(query);
+    const permissions =
+      await this.rolesService.getPermissionsForUser(actorUserId);
+    const includeOutOfContract = permissions.includes('job.viewContractTabs');
+
     const rows = await this.prisma.job.findMany({
       where: {
+        ...(includeOutOfContract ? {} : { NOT: { isOutOfContract: true } }),
         OR: [
           { reportDate: { gte: start, lte: end } },
           {
-            AND: [{ reportDate: null }, { createdAt: { gte: start, lte: end } }],
+            AND: [
+              { reportDate: null },
+              { createdAt: { gte: start, lte: end } },
+            ],
           },
         ],
       },
@@ -382,6 +397,10 @@ export class JobsPdfService {
       )
       .join('');
 
+    const outOfContractKpi = includeOutOfContract
+      ? `<div class="kpi"><div class="label">นอกสัญญา</div><div class="value">${outOfContract}</div></div>`
+      : '';
+
     const nowLabel = this.formatDateTimeTh(new Date());
     const html = `<!doctype html>
 <html lang="th">
@@ -408,7 +427,7 @@ export class JobsPdfService {
   </style>
 </head>
 <body>
-  <h1>รายงานสรุปงานแจ้งซ่อม CCTV</h1>
+  <h1>รายงานสรุปงานแจ้งซ่อม</h1>
   <div class="sub">ช่วงเวลา: ${this.htmlEscape(labelTh)} | ออกรายงาน: ${this.htmlEscape(nowLabel)}</div>
 
   <div class="grid">
@@ -417,7 +436,7 @@ export class JobsPdfService {
     <div class="kpi"><div class="label">กำลังแก้ไข</div><div class="value">${inProgress}</div></div>
     <div class="kpi"><div class="label">เสร็จสิ้น</div><div class="value">${resolved}</div></div>
     <div class="kpi"><div class="label">ยกเลิก</div><div class="value">${cancelled}</div></div>
-    <div class="kpi"><div class="label">นอกสัญญา</div><div class="value">${outOfContract}</div></div>
+    ${outOfContractKpi}
     <div class="kpi"><div class="label">รอและยังไม่มอบหมาย</div><div class="value">${pendingUnassigned}</div></div>
   </div>
 
@@ -460,7 +479,10 @@ export class JobsPdfService {
     const browser = await this.launchBrowser();
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 120_000 });
+      await page.setContent(html, {
+        waitUntil: 'networkidle0',
+        timeout: 120_000,
+      });
       await page.emulateMediaType('print');
       const pdf = await page.pdf({
         format: 'A4',

@@ -6,6 +6,11 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  CLASSIFY_DOC_CHILD_CODES,
+  grantClassifyDocChildrenToRolesWithParent,
+  shouldGrantClassifyDocChildrenOnCatalogSync,
+} from './classify-doc-permission-inherit';
 
 /** แคตตาล็อก Permission — ต้องสอดคล้องกับ `scripts/seed-roles-permissions.ts` */
 const RBAC_MENU_PERMISSIONS = [
@@ -19,34 +24,96 @@ const RBAC_MENU_PERMISSIONS = [
   { code: 'menu.all', name: 'ประวัติทั้งหมด', category: 'menu' },
   { code: 'menu.outOfContract', name: 'นอกสัญญา', category: 'menu' },
   { code: 'menu.sites', name: 'จัดการ Site', category: 'menu' },
+  {
+    code: 'menu.locations',
+    name: 'จัดการข้อมูล Master (พื้นที่)',
+    category: 'menu',
+  },
   { code: 'menu.users', name: 'จัดการผู้ใช้', category: 'menu' },
   { code: 'menu.settings', name: 'ตั้งค่าระบบ', category: 'menu' },
   { code: 'menu.roles', name: 'จัดการบทบาทและสิทธิ์', category: 'menu' },
+  { code: 'menu.userGuide', name: 'คู่มือระบบ', category: 'menu' },
 ] as const;
 
 const RBAC_ACTION_PERMISSIONS = [
   { code: 'job.assign', name: 'มอบหมายงาน', category: 'job' },
-  { code: 'job.deleteUnassigned', name: 'ลบงานที่ยังไม่มีผู้รับผิดชอบ', category: 'job' },
+  {
+    code: 'job.viewContractTabs',
+    name: 'ดูแท็บสัญญา/นอกสัญญา',
+    category: 'job',
+  },
+  { code: 'job.classifyDoc', name: 'จำแนกเอกสาร', category: 'job' },
+  {
+    code: 'job.classifyDoc.contract',
+    name: 'จำแนกเอกสาร — ในสัญญา',
+    category: 'job',
+  },
+  {
+    code: 'job.classifyDoc.outOfContract',
+    name: 'จำแนกเอกสาร — นอกสัญญา',
+    category: 'job',
+  },
+  {
+    code: 'job.deleteUnassigned',
+    name: 'ลบงานที่ยังไม่มีผู้รับผิดชอบ',
+    category: 'job',
+  },
   { code: 'job.updateStatus', name: 'เปลี่ยนสถานะงาน', category: 'job' },
-  { code: 'job.backfillDate', name: 'แก้ไขวันเวลาย้อนหลังของงาน', category: 'job' },
-  { code: 'job.deleteInProgress', name: 'ลบงานกำลังแก้ไข (ผู้ดูแล)', category: 'job' },
-  { code: 'job.cancel', name: 'ยกเลิกงานรอดำเนินการ (PENDING)', category: 'job' },
-  { code: 'job.fix.self', name: 'บันทึก/ปิดงาน (เฉพาะงานที่รับผิดชอบ)', category: 'job' },
+  {
+    code: 'job.backfillDate',
+    name: 'แก้ไขวันเวลาย้อนหลังของงาน',
+    category: 'job',
+  },
+  {
+    code: 'job.deleteInProgress',
+    name: 'ลบงานกำลังแก้ไข (ผู้ดูแล)',
+    category: 'job',
+  },
+  {
+    code: 'job.cancel',
+    name: 'ยกเลิกงานรอดำเนินการ (PENDING)',
+    category: 'job',
+  },
+  {
+    code: 'job.issue.upload',
+    name: 'อัปโหลดรูปปัญหาที่แจ้ง',
+    category: 'job',
+  },
+  {
+    code: 'job.fix.self',
+    name: 'บันทึก/ปิดงาน (เฉพาะงานที่รับผิดชอบ)',
+    category: 'job',
+  },
   { code: 'job.fix.any', name: 'บันทึก/ปิดงาน (ทุกงาน)', category: 'job' },
-  { code: 'job.reopen.self', name: 'Reopen งาน (เฉพาะงานที่รับผิดชอบ)', category: 'job' },
+  {
+    code: 'job.reopen.self',
+    name: 'Reopen งาน (เฉพาะงานที่รับผิดชอบ)',
+    category: 'job',
+  },
   { code: 'job.reopen.any', name: 'Reopen งาน (ทุกงาน)', category: 'job' },
   { code: 'site.create', name: 'เพิ่ม Site', category: 'site' },
   { code: 'site.update', name: 'แก้ไข Site', category: 'site' },
   { code: 'site.delete', name: 'ลบ Site', category: 'site' },
+  {
+    code: 'location.create',
+    name: 'เพิ่มจังหวัด/อำเภอ/ตำบล',
+    category: 'location',
+  },
 ] as const;
 
 const RBAC_ACTION_CODES_ALL = RBAC_ACTION_PERMISSIONS.map((p) => p.code);
 /** SUPERVISOR ไม่ได้ลบงาน IN_PROGRESS แบบผู้ดูแล (เฉพาะ ADMIN) */
 const RBAC_ACTION_CODES_SUPERVISOR = RBAC_ACTION_CODES_ALL.filter(
-  (c) => c !== 'job.deleteInProgress' && c !== 'job.backfillDate',
+  (c) =>
+    c !== 'job.deleteInProgress' &&
+    c !== 'job.backfillDate' &&
+    c !== 'job.issue.upload',
 );
 
-const RBAC_ALL_PERMISSIONS = [...RBAC_MENU_PERMISSIONS, ...RBAC_ACTION_PERMISSIONS];
+const RBAC_ALL_PERMISSIONS = [
+  ...RBAC_MENU_PERMISSIONS,
+  ...RBAC_ACTION_PERMISSIONS,
+];
 
 const RBAC_DEFAULT_ROLES = [
   {
@@ -80,20 +147,37 @@ const RBAC_DEFAULT_ROLES = [
 ] as const;
 
 const RBAC_STAFF_MENU_CODES = RBAC_MENU_PERMISSIONS.map((p) => p.code).filter(
-  (c) => !['menu.users', 'menu.settings', 'menu.roles', 'menu.sites'].includes(c),
+  (c) =>
+    ![
+      'menu.users',
+      'menu.settings',
+      'menu.roles',
+      'menu.userGuide',
+      'menu.sites',
+      'menu.locations',
+    ].includes(c),
 );
 
 /** export ให้ PermissionsGuard ใช้ชุดเดียวกับ enum user (ไม่มี roleId) */
 export const RBAC_ROLE_PERMISSION_CODES: Record<string, string[]> = {
-  ADMIN: [...RBAC_MENU_PERMISSIONS.map((p) => p.code), ...RBAC_ACTION_CODES_ALL],
+  ADMIN: [
+    ...RBAC_MENU_PERMISSIONS.map((p) => p.code),
+    ...RBAC_ACTION_CODES_ALL,
+  ],
   STAFF: [
     ...RBAC_STAFF_MENU_CODES,
+    'job.viewContractTabs',
     'job.fix.self',
     'job.reopen.self',
     'job.updateStatus',
   ],
   USER: ['menu.profile', 'menu.report', 'menu.status'],
-  SUPERVISOR: [...RBAC_STAFF_MENU_CODES, 'menu.sites', ...RBAC_ACTION_CODES_SUPERVISOR],
+  SUPERVISOR: [
+    ...RBAC_STAFF_MENU_CODES,
+    'menu.sites',
+    'menu.locations',
+    ...RBAC_ACTION_CODES_SUPERVISOR,
+  ],
 };
 
 @Injectable()
@@ -153,37 +237,63 @@ export class RolesService implements OnModuleInit {
       const newCodes = RBAC_ALL_PERMISSIONS.map((x) => x.code).filter(
         (c) => !beforeCodes.has(c),
       );
-      if (newCodes.length === 0) return;
-
       const newCodeSet = new Set<string>(newCodes);
       const allPerms = await this.prisma.permission.findMany({
         select: { id: true, code: true },
       });
       const idByCode = Object.fromEntries(allPerms.map((p) => [p.code, p.id]));
 
-      const builtIn = await this.prisma.appRole.findMany({
-        where: { code: { in: ['ADMIN', 'STAFF', 'USER', 'SUPERVISOR'] } },
-        select: { id: true, code: true },
-      });
+      if (newCodes.length > 0) {
+        const builtIn = await this.prisma.appRole.findMany({
+          where: { code: { in: ['ADMIN', 'STAFF', 'USER', 'SUPERVISOR'] } },
+          select: { id: true, code: true },
+        });
 
-      for (const r of builtIn) {
-        const allowed = RBAC_ROLE_PERMISSION_CODES[r.code];
-        if (!allowed) continue;
-        const toLink = allowed.filter((c) => newCodeSet.has(c));
-        const rows = toLink
-          .map((code) => {
-            const permissionId = idByCode[code];
-            return permissionId != null
-              ? { roleId: r.id, permissionId }
-              : null;
-          })
-          .filter((x): x is { roleId: number; permissionId: number } => x != null);
-        if (rows.length > 0) {
-          await this.prisma.rolePermission.createMany({
-            data: rows,
-            skipDuplicates: true,
-          });
+        for (const r of builtIn) {
+          const allowed = RBAC_ROLE_PERMISSION_CODES[r.code];
+          if (!allowed) continue;
+          const toLink = allowed.filter((c) => newCodeSet.has(c));
+          const rows = toLink
+            .map((code) => {
+              const permissionId = idByCode[code];
+              return permissionId != null
+                ? { roleId: r.id, permissionId }
+                : null;
+            })
+            .filter(
+              (x): x is { roleId: number; permissionId: number } => x != null,
+            );
+          if (rows.length > 0) {
+            await this.prisma.rolePermission.createMany({
+              data: rows,
+              skipDuplicates: true,
+            });
+          }
         }
+      }
+
+      /**
+       * บทบาทที่มี job.classifyDoc (รวมที่สร้างเอง) ได้ลูกครบในรอบแรก
+       * ไม่รันทุก restart — กันการติ๊กออกที่ /dashboard/roles ถูกคืน
+       */
+      const childIds = CLASSIFY_DOC_CHILD_CODES.map(
+        (code) => idByCode[code],
+      ).filter((id): id is number => id != null);
+      const existingChildLinkCount =
+        childIds.length === 0
+          ? 0
+          : await this.prisma.rolePermission.count({
+              where: { permissionId: { in: childIds } },
+            });
+      if (
+        shouldGrantClassifyDocChildrenOnCatalogSync({
+          childCodesAreNew: CLASSIFY_DOC_CHILD_CODES.some((c) =>
+            newCodeSet.has(c),
+          ),
+          existingChildLinkCount,
+        })
+      ) {
+        await grantClassifyDocChildrenToRolesWithParent(this.prisma);
       }
     })();
 
@@ -226,7 +336,9 @@ export class RolesService implements OnModuleInit {
       }
 
       const permissions = await this.prisma.permission.findMany();
-      const permByCode = Object.fromEntries(permissions.map((p) => [p.code, p.id]));
+      const permByCode = Object.fromEntries(
+        permissions.map((p) => [p.code, p.id]),
+      );
 
       const roleIds: Record<string, number> = {};
       for (const r of RBAC_DEFAULT_ROLES) {
@@ -249,19 +361,28 @@ export class RolesService implements OnModuleInit {
         roleIds[r.code] = role.id;
       }
 
-      for (const [roleCode, permCodes] of Object.entries(RBAC_ROLE_PERMISSION_CODES)) {
+      for (const [roleCode, permCodes] of Object.entries(
+        RBAC_ROLE_PERMISSION_CODES,
+      )) {
         const roleId = roleIds[roleCode];
         if (!roleId) continue;
-        const permissionIds = permCodes.map((code) => permByCode[code]).filter(Boolean) as number[];
+        const permissionIds = permCodes
+          .map((code) => permByCode[code])
+          .filter(Boolean);
         if (permissionIds.length > 0) {
           await this.prisma.rolePermission.createMany({
-            data: permissionIds.map((permissionId) => ({ roleId, permissionId })),
+            data: permissionIds.map((permissionId) => ({
+              roleId,
+              permissionId,
+            })),
             skipDuplicates: true,
           });
         }
       }
 
-      const users = await this.prisma.user.findMany({ select: { id: true, role: true } });
+      const users = await this.prisma.user.findMany({
+        select: { id: true, role: true },
+      });
       const enumToRoleId: Record<string, number | undefined> = {
         ADMIN: roleIds.ADMIN,
         STAFF: roleIds.STAFF,
@@ -269,9 +390,12 @@ export class RolesService implements OnModuleInit {
         SUPERVISOR: roleIds.SUPERVISOR,
       };
       for (const u of users) {
-        const roleId = enumToRoleId[u.role as string];
+        const roleId = enumToRoleId[u.role];
         if (roleId != null) {
-          await this.prisma.user.update({ where: { id: u.id }, data: { roleId } });
+          await this.prisma.user.update({
+            where: { id: u.id },
+            data: { roleId },
+          });
         }
       }
     })();
@@ -313,7 +437,9 @@ export class RolesService implements OnModuleInit {
   }
 
   async setRolePermissions(roleId: number, permissionIds: number[]) {
-    const role = await this.prisma.appRole.findUnique({ where: { id: roleId } });
+    const role = await this.prisma.appRole.findUnique({
+      where: { id: roleId },
+    });
     if (!role) throw new NotFoundException('ไม่พบบทบาทนี้');
     await this.prisma.rolePermission.deleteMany({ where: { roleId } });
     if (permissionIds.length > 0) {
@@ -350,7 +476,12 @@ export class RolesService implements OnModuleInit {
 
   async updateRole(
     id: number,
-    data: { name?: string; description?: string; badgeTextColor?: string; badgeBgColor?: string },
+    data: {
+      name?: string;
+      description?: string;
+      badgeTextColor?: string;
+      badgeBgColor?: string;
+    },
   ) {
     const role = await this.prisma.appRole.findUnique({ where: { id } });
     if (!role) throw new NotFoundException('ไม่พบบทบาทนี้');
@@ -361,9 +492,12 @@ export class RolesService implements OnModuleInit {
       badgeBgColor?: string | null;
     } = {};
     if (data.name !== undefined) updateData.name = data.name.trim();
-    if (data.description !== undefined) updateData.description = data.description.trim();
+    if (data.description !== undefined)
+      updateData.description = data.description.trim();
     if (data.badgeTextColor !== undefined) {
-      updateData.badgeTextColor = this.normalizeHexColorOrNull(data.badgeTextColor);
+      updateData.badgeTextColor = this.normalizeHexColorOrNull(
+        data.badgeTextColor,
+      );
     }
     if (data.badgeBgColor !== undefined) {
       updateData.badgeBgColor = this.normalizeHexColorOrNull(data.badgeBgColor);
@@ -375,9 +509,13 @@ export class RolesService implements OnModuleInit {
   }
 
   async deleteRole(id: number) {
-    const role = await this.prisma.appRole.findUnique({ where: { id }, include: { _count: { select: { users: true } } } });
+    const role = await this.prisma.appRole.findUnique({
+      where: { id },
+      include: { _count: { select: { users: true } } },
+    });
     if (!role) throw new NotFoundException('ไม่พบบทบาทนี้');
-    if (role._count.users > 0) throw new ConflictException('ไม่สามารถลบบทบาทที่มีผู้ใช้ผูกอยู่');
+    if (role._count.users > 0)
+      throw new ConflictException('ไม่สามารถลบบทบาทที่มีผู้ใช้ผูกอยู่');
     await this.prisma.appRole.delete({ where: { id } });
     return { ok: true };
   }
@@ -403,7 +541,9 @@ export class RolesService implements OnModuleInit {
     return rows.map((r) => ({
       code: String(r.code || '').toUpperCase(),
       name: r.name,
-      badgeTextColor: this.normalizeHexColorOrNull(r.badgeTextColor ?? undefined),
+      badgeTextColor: this.normalizeHexColorOrNull(
+        r.badgeTextColor ?? undefined,
+      ),
       badgeBgColor: this.normalizeHexColorOrNull(r.badgeBgColor ?? undefined),
     }));
   }

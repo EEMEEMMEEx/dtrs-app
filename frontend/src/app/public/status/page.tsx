@@ -19,43 +19,43 @@ import { Button } from "@/components/ui/button";
 import PublicRouteLoading from "@/components/PublicRouteLoading";
 import ManagedImage, { MANAGED_IMAGE_SIZES } from "@/components/ManagedImage";
 import ManagedImageFrame from "@/components/ManagedImageFrame";
+import { getIncidentCategoryLabel } from "@/lib/incidentCategories";
 
 const STATUS_LABEL: Record<string, { text: string; badgeClass: string }> = {
   PENDING: {
     text: "รอดำเนินการ",
     badgeClass:
-      "border border-amber-400/30 bg-amber-500/15 text-amber-200 backdrop-blur-md shadow-inner",
+      "border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-200 backdrop-blur-md shadow-inner",
   },
   IN_PROGRESS: {
     text: "กำลังแก้ไข",
     badgeClass:
-      "border border-blue-400/30 bg-blue-500/15 text-blue-200 backdrop-blur-md shadow-inner",
+      "border border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-400/30 dark:bg-blue-500/15 dark:text-blue-200 backdrop-blur-md shadow-inner",
   },
   RESOLVED: {
     text: "แล้วเสร็จ",
     badgeClass:
-      "border border-emerald-400/30 bg-emerald-500/15 text-emerald-200 backdrop-blur-md shadow-inner",
+      "border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-200 backdrop-blur-md shadow-inner",
   },
   CANCELLED: {
     text: "ยกเลิก",
     badgeClass:
-      "border border-slate-400/30 bg-slate-600/20 text-slate-200 backdrop-blur-md shadow-inner",
+      "border border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-400/30 dark:bg-slate-600/20 dark:text-slate-200 backdrop-blur-md shadow-inner",
   },
 };
 
 const STATUS_BADGE_FALLBACK =
-  "border border-white/10 bg-slate-500/20 text-slate-200 backdrop-blur-md shadow-inner";
+  "border border-slate-300 bg-slate-100 text-slate-700 dark:border-[var(--glass-card-border)] dark:bg-slate-500/20 dark:text-slate-200 backdrop-blur-md shadow-inner";
 
 /** ปุ่มรอง — Dark Glass (สอดคล้อง AGENTS: Cancel slate) */
 const GLASS_BUTTON_SECONDARY =
-  "inline-flex items-center justify-center rounded-xl border border-white/15 bg-slate-800/50 backdrop-blur-md text-slate-100 shadow-lg hover:bg-slate-700/55 hover:border-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500/50 transition-all active:scale-95";
+  "inline-flex items-center justify-center rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] backdrop-blur-md glass-text shadow-lg hover:bg-[var(--glass-nav-hover-bg)] hover:border-blue-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500/50 transition-all active:scale-95";
 
 /** ปุ่มฟ้าแบบกะทัดรัดสำหรับแถวในตาราง (ไม่ให้ช่องอาการถูกบีบจากปุ่มใหญ่เกินจำเป็น) */
 const GLASS_BUTTON_PRIMARY_TABLE_ROW =
   "inline-flex items-center justify-center rounded-lg border border-blue-400/35 bg-blue-600/90 backdrop-blur-md text-white text-[10px] sm:text-[11px] font-medium shadow-md shadow-blue-950/25 ring-1 ring-white/10 px-2 py-1.5 sm:px-2.5 gap-1 min-h-10 hover:bg-blue-500/95 hover:border-blue-300/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400/70 transition-all active:scale-95 cursor-pointer";
 
-const GLASS_SECTION =
-  'rounded-2xl border border-white/10 bg-slate-900/50 backdrop-blur-md shadow-2xl px-5 sm:px-7 py-5 sm:py-6';
+const GLASS_SECTION = 'glass-card px-5 sm:px-7 py-5 sm:py-6';
 
 function normalizeIssueImages(raw: unknown): string[] {
   if (!raw) return [];
@@ -118,12 +118,12 @@ function ReporterAvatarGlass({
       src={showImg ? src ?? "" : null}
       alt={name ? `รูปโปรไฟล์ ${name}` : "ผู้แจ้ง"}
       sizes={MANAGED_IMAGE_SIZES.avatarXlResponsive}
-      frameClassName="flex h-20 w-20 shrink-0 rounded-2xl border border-white/15 bg-slate-800/50 shadow-inner ring-1 ring-white/10 backdrop-blur-md sm:h-22 sm:w-22"
+      frameClassName="flex h-20 w-20 shrink-0 rounded-2xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] shadow-inner ring-1 ring-white/10 backdrop-blur-md sm:h-22 sm:w-22"
       imageClassName="h-full w-full object-cover"
       onError={() => setImgError(true)}
       fallback={
         <div
-          className="flex h-full w-full items-center justify-center bg-slate-800/80 text-slate-500"
+          className="flex h-full w-full items-center justify-center bg-[var(--glass-card-bg)] glass-subtle-text"
           aria-hidden
         >
           <User size={40} strokeWidth={1.35} className="opacity-95" />
@@ -136,6 +136,7 @@ function ReporterAvatarGlass({
 type PhoneStatusListItem = {
   id?: number;
   ticketNo: string | null;
+  requestTicketNo?: string | null;
   status: string;
   reportDate: string | null;
   /** อาการ/รายละเอียดคร่าวๆ (description หรือ fallback title) */
@@ -161,7 +162,7 @@ function formatIssuePreview(full: string | null | undefined) {
 /** คีย์คงที่สำหรับแถวรายการตามเบอร์ (เปิด/ปิดรายละเอียดสาเหตุ–วิธีแก้) */
 function phoneFixDetailRowKey(row: PhoneStatusListItem): string {
   const idPart = typeof row.id === 'number' ? String(row.id) : 'noid';
-  return `${idPart}|${row.ticketNo ?? ''}|${row.reportDate ?? ''}`;
+  return `${idPart}|${row.ticketNo ?? ''}|${row.requestTicketNo ?? ''}|${row.reportDate ?? ''}`;
 }
 
 function CauseFixFields({
@@ -179,14 +180,14 @@ function CauseFixFields({
   const m = (fixMethod ?? '').trim();
   const blockPad = compact ? 'px-3.5 py-3 sm:px-4 sm:py-3.5' : 'px-4 py-4 sm:px-5 sm:py-4';
   const bodyCls =
-    'mt-2 text-[15px] sm:text-base text-white font-medium whitespace-pre-wrap wrap-break-word leading-relaxed';
-  const dashCls = 'mt-2 text-base text-slate-500 italic';
+    'mt-2 text-[15px] sm:text-base glass-text font-medium whitespace-pre-wrap wrap-break-word leading-relaxed';
+  const dashCls = 'mt-2 text-base glass-subtle-text italic';
 
   if (!c && !m) {
     return (
       <p
         className={
-          compact ? 'text-sm text-slate-400 leading-relaxed' : 'text-sm sm:text-base text-slate-400 leading-relaxed'
+          compact ? 'text-sm glass-muted-text leading-relaxed' : 'text-sm sm:text-base glass-muted-text leading-relaxed'
         }
       >
         {emptyHint}
@@ -197,9 +198,9 @@ function CauseFixFields({
   return (
     <div className={compact ? 'space-y-4' : 'grid gap-4 sm:gap-5'}>
       <div
-        className={`rounded-xl border border-white/12 border-l-4 border-l-amber-400/90 bg-slate-950/55 backdrop-blur-sm shadow-inner ${blockPad}`}
+        className={`rounded-xl border border-[var(--glass-card-border)] border-l-4 border-l-amber-400/90 bg-[var(--glass-card-bg)] backdrop-blur-sm shadow-inner ${blockPad}`}
       >
-        <p className="text-sm sm:text-[0.9375rem] font-bold tracking-wide text-amber-100">
+        <p className="text-sm sm:text-[0.9375rem] font-bold tracking-wide text-amber-800 dark:text-amber-100">
           สาเหตุ
         </p>
         <p className={c ? bodyCls : dashCls} role={c ? undefined : 'status'}>
@@ -207,10 +208,10 @@ function CauseFixFields({
         </p>
       </div>
       <div
-        className={`rounded-xl border border-white/12 border-l-4 border-l-emerald-400/90 bg-slate-950/55 backdrop-blur-sm shadow-inner ${blockPad}`}
+        className={`rounded-xl border border-[var(--glass-card-border)] border-l-4 border-l-emerald-400/90 bg-[var(--glass-card-bg)] backdrop-blur-sm shadow-inner ${blockPad}`}
       >
-        <p className="text-sm sm:text-[0.9375rem] font-bold tracking-wide text-emerald-100">
-          วิธีการแก้ไข
+        <p className="text-sm sm:text-[0.9375rem] font-bold tracking-wide text-emerald-800 dark:text-emerald-100">
+          วิธีการแก้ไขและผลทดสอบ
         </p>
         <p className={m ? bodyCls : dashCls} role={m ? undefined : 'status'}>
           {m || '–'}
@@ -225,7 +226,7 @@ function StatusPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/api';
+  const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4100/api';
   const initialTicketFromUrl = searchParams.get('ticketNo') ?? '';
   const initialPhoneFromUrl = searchParams.get('phone') ?? '';
   const [searchMode, setSearchMode] = useState<'phone' | 'ticket'>(
@@ -243,10 +244,12 @@ function StatusPageInner() {
   const [phoneDetailExpandedKey, setPhoneDetailExpandedKey] = useState<string | null>(null);
   const [result, setResult] = useState<{
     id?: number;
-    ticketNo: string;
+    ticketNo?: string | null;
+    requestTicketNo?: string | null;
     status: string;
     reportDate: string | null;
     detailLevel?: 'masked' | 'full';
+    incidentCategory?: string | null;
     description?: string | null;
     cause?: string | null;
     fixMethod?: string | null;
@@ -265,10 +268,12 @@ function StatusPageInner() {
 
   const isStatusResult = (v: unknown): v is {
     id?: number;
-    ticketNo: string;
+    ticketNo?: string | null;
+    requestTicketNo?: string | null;
     status: string;
     reportDate: string | null;
     detailLevel?: 'masked' | 'full';
+    incidentCategory?: string | null;
     description?: string | null;
     cause?: string | null;
     fixMethod?: string | null;
@@ -284,7 +289,11 @@ function StatusPageInner() {
   } => {
     if (!v || typeof v !== 'object') return false;
     const o = v as Record<string, unknown>;
-    return typeof o.ticketNo === 'string' && typeof o.status === 'string';
+    const hasTn = typeof o.ticketNo === 'string' && o.ticketNo.length > 0;
+    const hasReq = typeof o.requestTicketNo === 'string' && o.requestTicketNo.length > 0;
+    const tnValid = o.ticketNo === null || o.ticketNo === undefined || typeof o.ticketNo === 'string';
+    const reqValid = o.requestTicketNo === null || o.requestTicketNo === undefined || typeof o.requestTicketNo === 'string';
+    return (hasTn || hasReq) && tnValid && reqValid && typeof o.status === 'string';
   };
 
   const isPhoneListPayload = (v: unknown): v is {
@@ -298,6 +307,7 @@ function StatusPageInner() {
       if (!row || typeof row !== 'object') return false;
       const r = row as Record<string, unknown>;
       const tnOk = r.ticketNo === null || typeof r.ticketNo === 'string';
+      const reqTnOk = r.requestTicketNo === undefined || r.requestTicketNo === null || typeof r.requestTicketNo === 'string';
       const idOk = r.id === undefined || typeof r.id === 'number';
       const issueOk =
         r.issueSummary === undefined ||
@@ -312,6 +322,7 @@ function StatusPageInner() {
       return (
         idOk &&
         tnOk &&
+        reqTnOk &&
         typeof r.status === 'string' &&
         (r.reportDate === null || typeof r.reportDate === 'string') &&
         issueOk &&
@@ -454,7 +465,13 @@ function StatusPageInner() {
     if (!token) return;
     if (!result || result.detailLevel !== 'masked') return;
     const no =
-      ticketNo.trim() || initialTicketFromUrl || (typeof result.ticketNo === 'string' ? result.ticketNo : '');
+      ticketNo.trim() ||
+      initialTicketFromUrl ||
+      (typeof result.ticketNo === 'string' && result.ticketNo
+        ? result.ticketNo
+        : typeof result.requestTicketNo === 'string'
+          ? result.requestTicketNo
+          : '');
     if (!no) return;
     performSearch(no);
   }, [status, session, result, ticketNo, initialTicketFromUrl, performSearch]);
@@ -495,16 +512,11 @@ function StatusPageInner() {
     filteredCount: phoneFilteredCount,
   } = useDashboardTablePaging(phoneRowsForTable, phonePagingFilterKey);
 
-  const isDark = true;
-  const cardOuterClass = isDark
-    ? `${GLASS_SECTION} transition-all duration-300`
-    : "bg-white/95 backdrop-blur-sm rounded-xl border border-slate-200 px-5 sm:px-7 py-5 sm:py-6 shadow-md transition-all duration-300";
-  const headerClass = isDark ? "flex items-center gap-2 mb-4 pb-3 border-b border-white/10" : "flex items-center gap-2 mb-4 pb-3 border-b border-slate-100";
-  const headerIconClass = isDark ? "text-blue-400" : "text-blue-600";
-  const headerTitleClass = isDark ? "text-base font-bold text-white" : "text-base font-bold text-slate-800";
-  const inputClass = isDark 
-    ? "w-full rounded-xl border border-white/10 bg-slate-900/40 backdrop-blur-sm pl-10 pr-4 py-2.5 text-sm text-white focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-slate-500 min-w-0" 
-    : "w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all placeholder:text-slate-400 min-w-0";
+  const cardOuterClass = `${GLASS_SECTION} transition-all duration-300`;
+  const headerClass = "flex items-center gap-2 mb-4 pb-3 border-b border-[var(--glass-card-border)]";
+  const headerIconClass = "text-blue-500";
+  const headerTitleClass = "text-base font-bold glass-text";
+  const inputClass = "form-input-glass w-full text-sm pr-4 py-2.5 min-w-0";
   const pageContent = (
         <div
           className={`w-full space-y-4 animate-fade-up min-w-0 ${
@@ -520,24 +532,24 @@ function StatusPageInner() {
             <section
               role="alert"
               aria-live="polite"
-              className="rounded-2xl border border-amber-500/45 bg-amber-950/55 backdrop-blur-md px-4 py-3.5 sm:px-5 sm:py-4 shadow-lg shadow-amber-950/40 ring-1 ring-amber-400/15"
+              className="rounded-2xl border border-amber-300 bg-amber-50 backdrop-blur-md px-4 py-3.5 sm:px-5 sm:py-4 shadow-lg ring-1 ring-amber-200/80 dark:border-amber-500/45 dark:bg-amber-950/55 dark:shadow-amber-950/40 dark:ring-amber-400/15"
             >
               <div className="flex gap-3 sm:gap-4">
                 <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-500/35 bg-amber-500/15 text-amber-300"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-300"
                   aria-hidden
                 >
                   <AlertTriangle size={22} strokeWidth={2} className="drop-shadow-sm" />
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-200/95">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200/95">
                     มุมมองสาธารณะ
                   </p>
-                  <p className="mt-1 text-sm leading-snug text-amber-50/95">
+                  <p className="mt-1 text-sm leading-snug text-amber-900/90 dark:text-amber-50/95">
                     ข้อมูลส่วนตัวและรูปถูกมาสก์ —{' '}
                     <Link
                       href="/login"
-                      className="font-semibold text-amber-200 underline decoration-amber-400/70 underline-offset-2 hover:text-white hover:decoration-amber-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400/80"
+                      className="font-semibold text-amber-800 underline decoration-amber-500/70 underline-offset-2 hover:text-[var(--glass-text)] hover:decoration-amber-700 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500/80 dark:text-amber-200 dark:decoration-amber-400/70 dark:hover:decoration-amber-200 dark:focus-visible:outline-amber-400/80"
                     >
                       เข้าสู่ระบบ
                     </Link>{' '}
@@ -551,10 +563,10 @@ function StatusPageInner() {
           {/* Page Title for public view */}
           {!session && !result && phoneList === undefined && (
              <div className="text-center mb-8">
-               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2 mt-4 drop-shadow-sm">
+               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight glass-text mb-2 mt-4 drop-shadow-sm">
                  ตรวจสอบสถานะการแจ้งซ่อม
                </h1>
-               <p className="text-[13px] sm:text-sm text-slate-300 max-w-lg mx-auto leading-relaxed">
+               <p className="text-[13px] sm:text-sm glass-muted-text max-w-lg mx-auto leading-relaxed">
                  {searchMode === 'phone'
                    ? 'กรอกเบอร์โทรผู้แจ้งซ่อมเพื่อดูรายการใบแจ้งทั้งหมดของเบอร์นั้น เรียงจากล่าสุด พร้อมสถานะปัจจุบัน'
                    : 'ค้นหาด้วยเลขที่ใบแจ้งซ่อมเพื่อดูรายละเอียดการแจ้งแบบเต็ม'}
@@ -583,7 +595,7 @@ function StatusPageInner() {
                     "h-auto min-h-10 cursor-pointer rounded-xl px-3 py-2 text-xs font-medium transition-all active:scale-95",
                     searchMode === 'phone'
                       ? 'bg-blue-600/90 text-white shadow-lg ring-1 ring-white/10 hover:bg-blue-600/90'
-                      : `${GLASS_BUTTON_SECONDARY} text-slate-200`,
+                      : `${GLASS_BUTTON_SECONDARY} glass-text`,
                   )}
                 >
                   ตามเบอร์โทร
@@ -600,7 +612,7 @@ function StatusPageInner() {
                     "h-auto min-h-10 cursor-pointer rounded-xl px-3 py-2 text-xs font-medium transition-all active:scale-95",
                     searchMode === 'ticket'
                       ? 'bg-blue-600/90 text-white shadow-lg ring-1 ring-white/10 hover:bg-blue-600/90'
-                      : `${GLASS_BUTTON_SECONDARY} text-slate-200`,
+                      : `${GLASS_BUTTON_SECONDARY} glass-text`,
                   )}
                 >
                   ตามเลขที่ใบ
@@ -620,12 +632,16 @@ function StatusPageInner() {
                     isStaffFlow ? "sm:max-w-sm" : ""
                   }`}
                 >
-                  <Phone size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} aria-hidden />
+                  <Phone
+                    size={16}
+                    className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-slate-600 dark:text-slate-400"
+                    aria-hidden
+                  />
                   <Input
                     type="text"
                     inputMode="numeric"
                     autoComplete="tel"
-                    className={cn(inputClass, "min-h-11 h-auto pl-10")}
+                    className={cn(inputClass, "has-leading-icon min-h-11 h-auto")}
                     placeholder="เบอร์โทรผู้แจ้ง (9–12 หลัก)"
                     aria-label="เบอร์โทรผู้แจ้งซ่อม"
                     value={phone}
@@ -653,12 +669,16 @@ function StatusPageInner() {
                     isStaffFlow ? "sm:max-w-sm" : ""
                   }`}
                 >
-                  <Search size={16} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-slate-600 dark:text-slate-400"
+                    aria-hidden
+                  />
                   <Input
                     type="text"
-                    className={cn(inputClass, "min-h-11 h-auto")}
-                    placeholder="กรอกเลขที่ใบแจ้งซ่อม"
-                    aria-label="เลขที่ใบแจ้งซ่อม"
+                    className={cn(inputClass, "has-leading-icon min-h-11 h-auto")}
+                    placeholder="กรอกเลขรับแจ้ง หรือเลขเอกสาร เช่น RQ-CM-20260001 หรือ CM-SHF-2026-0001"
+                    aria-label="เลขที่รับแจ้งหรือเลขที่เอกสาร"
                     value={ticketNo}
                     onChange={(e) => setTicketNo(e.target.value)}
                   />
@@ -680,26 +700,26 @@ function StatusPageInner() {
             <section
               role="note"
               aria-label="คำแนะนำการดูข้อมูลแบบสาธารณะ"
-              className="rounded-2xl border border-sky-500/25 bg-sky-950/35 backdrop-blur-md px-4 py-3 shadow-lg shadow-sky-950/30 ring-1 ring-sky-400/10"
+              className="rounded-2xl border border-sky-300 bg-sky-50 backdrop-blur-md px-4 py-3 shadow-lg ring-1 ring-sky-200/80 dark:border-sky-500/25 dark:bg-sky-950/35 dark:shadow-sky-950/30 dark:ring-sky-400/10"
             >
               <div className="flex gap-3 sm:gap-4 items-start">
                 <Info
                   size={18}
-                  className="text-sky-300 shrink-0 mt-0.5"
+                  className="text-sky-700 shrink-0 mt-0.5 dark:text-sky-300"
                   aria-hidden
                 />
                 <div className="min-w-0 space-y-1 text-[13px] sm:text-sm leading-relaxed">
-                  <p className="text-slate-200/95">
+                  <p className="glass-text">
                     {searchMode === 'phone'
                       ? 'การค้นตามเบอร์แสดงเลขที่ใบ อาการคร่าวๆ วันที่แจ้ง และสถานะ — ใช้ปุ่ม «สาเหตุ / วิธีแก้» เพื่อเปิดดูรายละเอียดจากผู้ซ่อม (เมื่อมีการบันทึก) และวางเมาส์บนข้อความอาการยาวเพื่อดูเต็ม'
                       : 'ในโหมดสาธารณะ ข้อมูลส่วนตัวและรูปภาพจะแสดงแบบมาสก์'}
                   </p>
-                  <p className="text-slate-400">
+                  <p className="glass-muted-text">
                     เข้าสู่ระบบเพื่อดูข้อมูลจริง
                     {" "}
                     <Link
                       href="/login"
-                      className="font-semibold text-sky-200 underline decoration-sky-400/60 underline-offset-2 hover:text-white hover:decoration-sky-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400/80"
+                      className="font-semibold text-sky-800 underline decoration-sky-500/60 underline-offset-2 hover:text-[var(--glass-text)] hover:decoration-sky-700 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/80 dark:text-sky-200 dark:decoration-sky-400/60 dark:hover:decoration-sky-200 dark:focus-visible:outline-sky-400/80"
                     >
                       ที่นี่
                     </Link>
@@ -713,18 +733,18 @@ function StatusPageInner() {
           {phoneSearchError && !loading && searchMode === 'phone' && (
             <section
               role="alert"
-              className={`${cardOuterClass} border-rose-500/30 bg-rose-950/25 text-left py-4`}
+              className={`${cardOuterClass} border-rose-300 bg-rose-50 text-left py-4 dark:border-rose-500/30 dark:bg-rose-950/25`}
             >
-              <p className="text-sm text-rose-100">{phoneSearchError}</p>
+              <p className="text-sm text-rose-800 dark:text-rose-100">{phoneSearchError}</p>
             </section>
           )}
 
           {phoneList !== undefined && !loading && searchMode === 'phone' && phoneList.length === 0 && !phoneSearchError && (
             <section className={`${cardOuterClass} text-center py-8`}>
-              <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>
+              <p className={`text-sm font-medium glass-muted-text`}>
                 ไม่พบรายการแจ้งซ่อมสำหรับเบอร์นี้
               </p>
-              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <p className={`text-xs mt-1 glass-subtle-text`}>
                 ตรวจสอบตัวเลขอีกครั้ง หรือลองค้นด้วยเลขที่ใบแจ้งซ่อม
               </p>
             </section>
@@ -732,15 +752,15 @@ function StatusPageInner() {
 
           {phoneList !== undefined && phoneList.length > 0 && searchMode === 'phone' && (
             <section
-              className="rounded-2xl border border-white/10 bg-slate-900/50 backdrop-blur-md shadow-2xl px-4 sm:px-6 md:px-8 py-5 sm:py-6"
+              className="glass-card px-4 sm:px-6 md:px-8 py-5 sm:py-6"
               aria-label="รายการแจ้งซ่อมตามเบอร์โทร"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-white/10">
-                <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">รายการแจ้งซ่อม</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[var(--glass-card-border)]">
+                <h2 className="text-base sm:text-lg font-bold glass-text tracking-tight">รายการแจ้งซ่อม</h2>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-                  <p className="text-xs sm:text-[13px] text-slate-400 order-2 sm:order-1 leading-snug">
+                  <p className="text-xs sm:text-[13px] glass-muted-text order-2 sm:order-1 leading-snug">
                     พบ{" "}
-                    <span className="font-semibold text-slate-200 tabular-nums">
+                    <span className="font-semibold glass-text tabular-nums">
                       {phoneFilteredCount}
                     </span>{" "}
                     รายการ · ทุกสถานะ · เรียงวันที่แจ้งล่าสุดก่อน
@@ -748,12 +768,12 @@ function StatusPageInner() {
                   <DataTablePageSizeSelect
                     value={phonePageSize}
                     onChange={setPhonePageSize}
-                    className="select-native-glass w-full sm:w-32 min-h-11 cursor-pointer order-1 sm:order-2"
+                    className="w-full sm:w-32 min-h-11 order-1 sm:order-2"
                     aria-label="จำนวนแถวต่อหน้า"
                   />
                 </div>
               </div>
-              <div className="rounded-xl border border-white/10 overflow-hidden -mx-0.5 sm:mx-0">
+              <div className="rounded-xl border border-[var(--glass-card-border)] overflow-hidden -mx-0.5 sm:mx-0">
               <div className="overflow-x-auto">
                 {/*
                   ใช้ table-auto + w-[1%] ที่คอลัมน์แคบ (เลขที่ใบ/วัน/สถานะ/ปุ่ม) และ min-w ที่คอลัมน์อาการ
@@ -761,7 +781,7 @@ function StatusPageInner() {
                 */}
                 <table className="w-full max-w-full table-auto text-left text-[0.8125rem] sm:text-[0.9375rem]">
                   <thead>
-                    <tr className="border-b border-white/10 text-slate-300 text-[11px] sm:text-xs uppercase tracking-wide bg-slate-950/35">
+                    <tr className="border-b border-[var(--glass-card-border)] glass-muted-text text-[11px] sm:text-xs uppercase tracking-wide bg-[var(--glass-input-bg)]">
                       <th className="py-2.5 pl-3 pr-2 font-semibold align-bottom whitespace-nowrap w-[1%]">
                         เลขที่ใบ
                       </th>
@@ -784,7 +804,7 @@ function StatusPageInner() {
                       ) : null}
                     </tr>
                   </thead>
-                  <tbody className="text-slate-200">
+                  <tbody className="glass-text">
                     {phonePageRows.map((row, rowIdx) => {
                       const st =
                         STATUS_LABEL[row.status] ?? {
@@ -798,11 +818,25 @@ function StatusPageInner() {
                       const tableColSpan = isStaffFlow ? 6 : 5;
                       return (
                         <Fragment key={`${phonePage}-${rowIdx}-${rowKey}`}>
-                          <tr className="border-b border-white/5 last:border-0">
-                            <td className="py-2.5 pl-3 pr-2 align-top font-mono text-[0.8125rem] sm:text-sm text-slate-100 tracking-tight whitespace-nowrap" title={row.ticketNo?.trim() || undefined}>
-                              {row.ticketNo?.trim() ? row.ticketNo : '–'}
+                          <tr className="border-b border-[var(--glass-card-border)] last:border-0">
+                            <td className="py-2.5 pl-3 pr-2 align-top font-mono text-[0.8125rem] sm:text-sm glass-text tracking-tight whitespace-nowrap">
+                              {row.ticketNo?.trim() ? (
+                                <div>
+                                  <div className="font-semibold">{row.ticketNo}</div>
+                                  {row.requestTicketNo?.trim() && (
+                                    <div className="text-[11px] glass-muted-text font-normal font-mono">
+                                      {row.requestTicketNo}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="font-semibold">{row.requestTicketNo?.trim() || '–'}</div>
+                                  <div className="text-[10px] text-amber-500/90 font-sans font-normal">ยังไม่จำแนกเอกสาร</div>
+                                </div>
+                              )}
                             </td>
-                            <td className="py-2.5 pr-2 sm:pr-3 text-slate-200 align-top min-w-48 sm:min-w-72 wrap-break-word">
+                            <td className="py-2.5 pr-2 sm:pr-3 glass-muted-text align-top min-w-48 sm:min-w-72 wrap-break-word">
                               {issue.clipped ? (
                                 <TextHoverTooltip text={issue.full}>
                                   <span className="block cursor-help wrap-break-word leading-snug">
@@ -815,7 +849,7 @@ function StatusPageInner() {
                                 </span>
                               )}
                             </td>
-                            <td className="py-2.5 px-2 text-slate-200 whitespace-nowrap text-[0.8125rem] sm:text-[0.9375rem] align-top tabular-nums text-center sm:text-left">
+                            <td className="py-2.5 px-2 glass-muted-text whitespace-nowrap text-[0.8125rem] sm:text-[0.9375rem] align-top tabular-nums text-center sm:text-left">
                               {formatReportDateTime(row.reportDate)}
                             </td>
                             <td className="py-2.5 px-2 align-top text-center sm:text-left">
@@ -833,7 +867,7 @@ function StatusPageInner() {
                                   setPhoneDetailExpandedKey(expanded ? null : rowKey)
                                 }
                                 className={cn(GLASS_BUTTON_PRIMARY_TABLE_ROW, "cursor-pointer")}
-                                aria-label={expanded ? `ซ่อนรายละเอียดสาเหตุ ใบ ${row.ticketNo ?? ''}` : `สาเหตุและวิธีแก้ ใบ ${row.ticketNo ?? ''}`}
+                                aria-label={expanded ? `ซ่อนรายละเอียดสาเหตุ ใบ ${row.ticketNo || row.requestTicketNo || ''}` : `สาเหตุและวิธีแก้ ใบ ${row.ticketNo || row.requestTicketNo || ''}`}
                               >
                                 <Wrench size={14} className="shrink-0 text-white/95" aria-hidden />
                                 <span className="whitespace-nowrap text-left leading-tight">
@@ -856,27 +890,27 @@ function StatusPageInner() {
                                     รายละเอียด
                                   </Link>
                                 ) : (
-                                  <span className="text-slate-500 text-xs">–</span>
+                                  <span className="glass-subtle-text text-xs">–</span>
                                 )}
                               </td>
                             ) : null}
                           </tr>
                           {expanded ? (
-                            <tr className="border-b border-white/5 bg-slate-950/25">
+                            <tr className="border-b border-[var(--glass-card-border)] bg-[var(--glass-card-bg)]">
                               <td colSpan={tableColSpan} className="px-3 pb-4 pt-0">
                                 <div
                                   id={detailPanelId}
                                   role="region"
                                   aria-labelledby={`${detailPanelId}-btn`}
-                                  className="rounded-xl border border-white/10 bg-slate-900/40 backdrop-blur-md px-4 py-4 shadow-inner"
+                                  className="glass-card backdrop-blur-md px-4 py-4 shadow-inner"
                                 >
-                                  <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
+                                  <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[var(--glass-card-border)]">
                                     <Wrench size={16} className="text-blue-400 shrink-0" aria-hidden />
-                                    <p className="text-sm font-semibold text-white">
+                                    <p className="text-sm font-semibold glass-text">
                                       รายละเอียดจากผู้ซ่อม
-                                      {row.ticketNo?.trim() ? (
-                                        <span className="font-normal text-slate-400 ms-1 break-all">
-                                          ({row.ticketNo.trim()})
+                                      {row.ticketNo?.trim() || row.requestTicketNo?.trim() ? (
+                                        <span className="font-normal glass-muted-text ms-1 break-all">
+                                          ({[row.ticketNo?.trim(), row.requestTicketNo?.trim()].filter(Boolean).join(' / ')})
                                         </span>
                                       ) : null}
                                     </p>
@@ -911,25 +945,40 @@ function StatusPageInner() {
           {/* ผลลัพธ์ — เลขที่ใบ */}
           {notFound && !loading && searchMode === 'ticket' && (
             <section className={`${cardOuterClass} text-center py-8`}>
-              <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>ไม่พบข้อมูลใบแจ้งซ่อมเลขที่นี้</p>
-              <p className={`text-xs mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>กรุณาตรวจสอบเลขที่ใบแจ้งซ่อมอีกครั้ง</p>
+              <p className={`text-sm font-medium glass-muted-text`}>ไม่พบข้อมูลใบแจ้งซ่อมเลขที่นี้</p>
+              <p className={`text-xs mt-1 glass-subtle-text`}>กรุณาตรวจสอบเลขที่ใบแจ้งซ่อมอีกครั้ง</p>
             </section>
           )}
 
           {result && (
             <>
               {!session && (
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white text-left">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight glass-text text-left">
                   ข้อมูลการแจ้งข้อขัดข้อง
                 </h1>
               )}
 
               {/* การ์ดบน: สถานะ / วันที่ / ผู้แจ้ง / สถานที่ */}
               <section className={GLASS_SECTION}>
-                <div className="flex flex-wrap items-start justify-between gap-3 pb-5 mb-5 border-b border-white/10">
+                <div className="flex flex-wrap items-start justify-between gap-3 pb-5 mb-5 border-b border-[var(--glass-card-border)]">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-slate-400">เลขที่ใบแจ้งซ่อม</p>
-                    <p className="text-base font-semibold text-white break-all mt-0.5">{result.ticketNo}</p>
+                    <p className="text-xs font-medium glass-muted-text">
+                      {result.ticketNo ? 'เลขที่เอกสาร / ใบแจ้งซ่อม' : 'เลขที่รับแจ้ง'}
+                    </p>
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mt-0.5">
+                      {result.ticketNo ? (
+                        <>
+                          <p className="text-base font-semibold glass-text break-all">{result.ticketNo}</p>
+                          {result.requestTicketNo && (
+                            <p className="text-xs glass-muted-text font-mono">
+                              (เลขรับแจ้ง: {result.requestTicketNo})
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-base font-semibold glass-text break-all">{result.requestTicketNo ?? '–'}</p>
+                      )}
+                    </div>
                   </div>
                   {session && result.id != null && (
                     <Link
@@ -942,7 +991,7 @@ function StatusPageInner() {
                 </div>
 
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-3 items-start">
-                  <span className="text-sm text-slate-400">สถานะปัจจุบัน</span>
+                  <span className="text-sm glass-muted-text">สถานะปัจจุบัน</span>
                   {statusStyle && (
                     <span
                       className={`text-sm font-semibold px-3 py-1 rounded-full justify-self-end whitespace-nowrap ${statusStyle.badgeClass}`}
@@ -951,16 +1000,16 @@ function StatusPageInner() {
                     </span>
                   )}
 
-                  <span className="text-sm text-slate-400">วันที่แจ้ง</span>
-                  <div className="flex items-center gap-1.5 justify-self-end text-sm text-slate-200 min-w-0">
-                    <Calendar size={16} className="text-slate-400 shrink-0" aria-hidden />
+                  <span className="text-sm glass-muted-text">วันที่แจ้ง</span>
+                  <div className="flex items-center gap-1.5 justify-self-end text-sm glass-text min-w-0">
+                    <Calendar size={16} className="glass-subtle-text shrink-0" aria-hidden />
                     <span className="break-all text-right">{formatReportDateTime(result.reportDate)}</span>
                   </div>
                 </div>
 
                 {(result.reporterName || result.reporterPhone || result.reporterEmail) && (
-                  <div className="mt-6 pt-5 border-t border-white/10">
-                    <p className="text-sm text-slate-400 mb-3">ผู้แจ้ง</p>
+                  <div className="mt-6 pt-5 border-t border-[var(--glass-card-border)]">
+                    <p className="text-sm glass-muted-text mb-3">ผู้แจ้ง</p>
                     <div className="flex items-start gap-4 sm:gap-5">
                       {isStaffFlow && !isPublicMasked ? (
                         <ReporterAvatarGlass
@@ -971,23 +1020,23 @@ function StatusPageInner() {
                       ) : (
                         <User
                           size={22}
-                          className="text-slate-400 shrink-0 mt-1"
+                          className="glass-muted-text shrink-0 mt-1"
                           aria-hidden
                         />
                       )}
                       <div className="min-w-0 flex-1 space-y-2 pt-0.5">
                         {result.reporterName ? (
-                          <p className="text-sm font-medium text-white">{result.reporterName}</p>
+                          <p className="text-sm font-medium glass-text">{result.reporterName}</p>
                         ) : null}
                         {result.reporterPhone ? (
-                          <div className="flex items-center gap-2 text-sm text-slate-300">
-                            <Phone size={16} className="text-slate-500 shrink-0" aria-hidden />
+                          <div className="flex items-center gap-2 text-sm glass-muted-text">
+                            <Phone size={16} className="glass-subtle-text shrink-0" aria-hidden />
                             {isPublicMasked ? (
                               <span className="break-all select-none">{result.reporterPhone}</span>
                             ) : (
                               <a
                                 href={`tel:${result.reporterPhone.replace(/\s/g, '')}`}
-                                className="hover:text-white transition-colors break-all cursor-pointer"
+                                className="hover:text-[var(--glass-text)] transition-colors break-all cursor-pointer"
                               >
                                 {result.reporterPhone}
                               </a>
@@ -995,14 +1044,14 @@ function StatusPageInner() {
                           </div>
                         ) : null}
                         {result.reporterEmail ? (
-                          <div className="flex items-center gap-2 text-sm text-slate-300">
-                            <Mail size={16} className="text-slate-500 shrink-0" aria-hidden />
+                          <div className="flex items-center gap-2 text-sm glass-muted-text">
+                            <Mail size={16} className="glass-subtle-text shrink-0" aria-hidden />
                             {isPublicMasked ? (
                               <span className="break-all select-none">{result.reporterEmail}</span>
                             ) : (
                               <a
                                 href={`mailto:${result.reporterEmail}`}
-                                className="hover:text-white transition-colors break-all cursor-pointer"
+                                className="hover:text-[var(--glass-text)] transition-colors break-all cursor-pointer"
                               >
                                 {result.reporterEmail}
                               </a>
@@ -1015,11 +1064,11 @@ function StatusPageInner() {
                 )}
 
                 {(result.province || result.district || result.location) && (
-                  <div className="mt-6 pt-5 border-t border-white/10">
-                    <p className="text-sm text-slate-400 mb-2">สถานที่</p>
+                  <div className="mt-6 pt-5 border-t border-[var(--glass-card-border)]">
+                    <p className="text-sm glass-muted-text mb-2">สถานที่</p>
                     <div className="flex items-start gap-2 min-w-0">
-                      <MapPin size={18} className="text-slate-400 shrink-0 mt-0.5" aria-hidden />
-                      <span className="text-sm text-slate-200 leading-relaxed wrap-break-word">
+                      <MapPin size={18} className="glass-muted-text shrink-0 mt-0.5" aria-hidden />
+                      <span className="text-sm glass-text leading-relaxed wrap-break-word">
                         {(() => {
                           const placeText = [result.province, result.district, result.location]
                             .filter(Boolean)
@@ -1034,19 +1083,42 @@ function StatusPageInner() {
 
               {/* การ์ดกลาง: รายละเอียดปัญหา */}
               <section className={GLASS_SECTION}>
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-white/10">
-                  <FileText size={18} className="text-blue-400 shrink-0" aria-hidden />
-                  <h2 className="text-base font-bold text-white">รายละเอียดปัญหา</h2>
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[var(--glass-card-border)]">
+                  <FileText size={18} className="text-blue-500 shrink-0" aria-hidden />
+                  <h2 className="text-base font-bold glass-text">รายละเอียดปัญหา</h2>
                 </div>
-                <p className="text-sm text-slate-300 whitespace-pre-wrap wrap-break-word leading-relaxed min-h-12">
-                  {result.description?.trim() ? result.description : '–'}
-                </p>
+                {result.incidentCategory && (
+                  <div className="mb-3">
+                    <span className="text-xs font-semibold glass-muted-text block mb-1">
+                      หัวข้อเหตุขัดข้อง
+                    </span>
+                    <span className="inline-block text-sm font-medium px-2 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+                      {getIncidentCategoryLabel(result.incidentCategory)}
+                    </span>
+                  </div>
+                )}
+                {result.description?.trim() ? (
+                  <div>
+                    {result.incidentCategory && (
+                      <span className="text-xs font-semibold glass-muted-text block mb-1">
+                        รายละเอียดเพิ่มเติม
+                      </span>
+                    )}
+                    <p className="text-sm glass-muted-text whitespace-pre-wrap wrap-break-word leading-relaxed">
+                      {result.description}
+                    </p>
+                  </div>
+                ) : !result.incidentCategory ? (
+                  <p className="text-sm glass-muted-text whitespace-pre-wrap wrap-break-word leading-relaxed min-h-12">
+                    –
+                  </p>
+                ) : null}
               </section>
 
               <section className={GLASS_SECTION} aria-labelledby="status-cause-fix-heading">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-white/10">
-                  <Wrench size={18} className="text-blue-400 shrink-0" aria-hidden />
-                  <h2 id="status-cause-fix-heading" className="text-base font-bold text-white">
+                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[var(--glass-card-border)]">
+                  <Wrench size={18} className="text-blue-500 shrink-0" aria-hidden />
+                  <h2 id="status-cause-fix-heading" className="text-base font-bold glass-text">
                     สาเหตุและวิธีการแก้ไข
                   </h2>
                 </div>
@@ -1063,9 +1135,9 @@ function StatusPageInner() {
                 Array.isArray(result.images) &&
                 issueImages.length > 0 && (
                 <section className={GLASS_SECTION}>
-                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[var(--glass-card-border)]">
                     <ImageIcon size={18} className="text-blue-400 shrink-0" aria-hidden />
-                    <h2 className="text-base font-bold text-white">รูปภาพประกอบ</h2>
+                    <h2 className="text-base font-bold glass-text">รูปภาพประกอบ</h2>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {(result.images as unknown[]).map((src, i) => {
@@ -1073,7 +1145,7 @@ function StatusPageInner() {
                       return (
                       <div
                         key={i}
-                        className="relative w-full aspect-video rounded-xl border border-white/10 overflow-hidden bg-slate-800/50"
+                        className="relative w-full aspect-video glass-card overflow-hidden bg-[var(--glass-card-bg)]"
                       >
                         <ManagedImage
                           src={dashboardJobImagePath(result.id!, "issue", i)}
@@ -1090,16 +1162,16 @@ function StatusPageInner() {
               )}
               {isPublicMasked && maskedImageSlots > 0 && (
                 <section className={GLASS_SECTION} aria-label="รูปภาพประกอบ (ซ่อนในหน้าสาธารณะ)">
-                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[var(--glass-card-border)]">
                     <ImageIcon size={18} className="text-blue-400 shrink-0" aria-hidden />
-                    <h2 className="text-base font-bold text-white">รูปภาพประกอบ</h2>
-                    <span className="text-xs font-medium text-slate-500">({maskedImageSlots} รูป — ซ่อนในหน้าสาธารณะ)</span>
+                    <h2 className="text-base font-bold glass-text">รูปภาพประกอบ</h2>
+                    <span className="text-xs font-medium glass-subtle-text">({maskedImageSlots} รูป — ซ่อนในหน้าสาธารณะ)</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {Array.from({ length: maskedImageSlots }).map((_, i) => (
                       <div
                         key={`placeholder-${i}`}
-                        className="relative w-full aspect-video rounded-xl border border-white/10 bg-[#0a0f1a] shadow-inner"
+                        className="relative w-full aspect-video rounded-xl border border-[var(--glass-card-border)] bg-slate-100 shadow-inner dark:bg-[#0a0f1a]"
                         aria-hidden
                       />
                     ))}
@@ -1127,28 +1199,30 @@ function StatusPageInner() {
           <div className="min-w-0">
             {result ? (
               <>
-                <h1 className="text-lg sm:text-xl font-bold text-white">
+                <h1 className="text-lg sm:text-xl font-bold glass-text">
                   ข้อมูลการแจ้งข้อขัดข้อง
                 </h1>
-                <p className="text-sm mt-0.5 text-slate-400 break-all">
-                  เลขที่ {result.ticketNo}
+                <p className="text-sm mt-0.5 glass-muted-text break-all">
+                  {result.ticketNo
+                    ? `เลขที่ ${result.ticketNo}${result.requestTicketNo ? ` (เลขรับแจ้ง: ${result.requestTicketNo})` : ''}`
+                    : `เลขรับแจ้ง: ${result.requestTicketNo ?? '–'}`}
                 </p>
               </>
             ) : phoneList !== undefined && phoneList.length > 0 ? (
               <>
-                <h1 className="text-lg sm:text-xl font-bold text-white">
+                <h1 className="text-lg sm:text-xl font-bold glass-text">
                   รายการแจ้งซ่อมตามเบอร์โทร
                 </h1>
-                <p className="text-sm mt-0.5 text-slate-400">
+                <p className="text-sm mt-0.5 glass-muted-text">
                   พบ {phoneList.length} รายการ · เรียงจากวันที่แจ้งล่าสุด
                 </p>
               </>
             ) : (
               <>
-                <h1 className="text-lg sm:text-xl font-bold truncate text-white">
+                <h1 className="text-lg sm:text-xl font-bold truncate glass-text">
                   ตรวจสอบสถานะการแจ้งซ่อม
                 </h1>
-                <p className="text-sm mt-0.5 text-slate-400">
+                <p className="text-sm mt-0.5 glass-muted-text">
                   ค้นหาตามเบอร์โทรผู้แจ้ง หรือเลขที่ใบแจ้งซ่อม
                 </p>
               </>

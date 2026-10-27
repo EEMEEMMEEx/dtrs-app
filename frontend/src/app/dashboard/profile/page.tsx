@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useSession } from "next-auth/react";
-import { User, Lock, Eye, EyeOff, Camera } from "lucide-react";
-import ManagedImageFrame from "@/components/ManagedImageFrame";
+import { User, Lock, Eye, EyeOff, Camera, PenLine } from "lucide-react";
 import DashboardRouteLoading from "@/components/DashboardRouteLoading";
 import SegmentedTabs from "@/components/SegmentedTabs";
 import RoleBadge from "@/components/RoleBadge";
+import SignaturePad, {
+  type SignaturePadHandle,
+} from "@/components/SignaturePad";
 import { toastSuccess, toastError } from "@/lib/toast";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -15,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { unwrapApiData } from "@/lib/apiResponse";
 import { buildRoleBadgeStyleMap, type RoleBadgeStyleMap } from "@/lib/roleBadge";
 import { MANAGED_IMAGE_SIZES } from "@/components/ManagedImage";
+import ManagedImageFrame from "@/components/ManagedImageFrame";
 
 interface Profile {
   id: number;
@@ -25,9 +28,10 @@ interface Profile {
   phone: string | null;
   position: string | null;
   image: string | null;
+  hasSignature?: boolean;
 }
 
-type TabId = "profile" | "password";
+type TabId = "profile" | "password" | "signature";
 
 export default function ProfilePage() {
   const { data: session, update: updateSession } = useSession();
@@ -57,8 +61,12 @@ export default function ProfilePage() {
     newPassword: "",
     confirmPassword: "",
   });
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [signaturePreviewKey, setSignaturePreviewKey] = useState(0);
+  const signaturePadRef = useRef<SignaturePadHandle | null>(null);
 
-  const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
+  const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4100/api";
   const token = (session as { accessToken?: string })?.accessToken;
 
   const fetchProfile = useCallback((): Promise<Profile | null> => {
@@ -84,6 +92,7 @@ export default function ProfilePage() {
           return null;
         }
         setProfile(p);
+        setHasSignature(Boolean(p.hasSignature));
         setForm({
           name: p.name ?? "",
           email: p.email ?? "",
@@ -247,25 +256,65 @@ export default function ProfilePage() {
     icon?: React.ComponentType<{ size?: number; className?: string }>;
   }> = [
     { id: "profile", label: "ข้อมูลผู้ใช้", icon: User },
+    { id: "signature", label: "ลายเซ็น", icon: PenLine },
     { id: "password", label: "รหัสผ่าน", icon: Lock },
   ];
 
+  const handleSaveSignature = async () => {
+    if (!token) return;
+    const blob = await signaturePadRef.current?.toBlob("image/png");
+    if (!blob) {
+      toastError("กรุณาวาดลายเซ็นก่อนบันทึก");
+      return;
+    }
+    setSignatureSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append("signature", blob, "signature.png");
+      await axios.patch(`${API}/users/me/signature`, fd, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toastSuccess("บันทึกลายเซ็นแล้ว", 1200);
+      setHasSignature(true);
+      setSignaturePreviewKey((k) => k + 1);
+      signaturePadRef.current?.clear();
+      await fetchProfile();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toastError(
+        "บันทึกลายเซ็นไม่สำเร็จ",
+        Array.isArray(msg) ? msg.join(", ") : msg || "เกิดข้อผิดพลาด",
+      );
+    } finally {
+      setSignatureSaving(false);
+    }
+  };
+
   const pwdToggleBtn =
-    "absolute right-1.5 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50";
+    "absolute right-1.5 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg glass-subtle-text hover:text-[var(--glass-text)] hover:bg-[var(--glass-hover)] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50";
+
+  const panelClass =
+    "rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-input-bg)]/60 backdrop-blur-sm p-4 sm:p-5";
+  const sectionClass =
+    "rounded-xl border border-[var(--glass-card-border)] p-4 bg-[var(--glass-card-bg)]";
+  const labelClass = "mb-1.5 block text-sm font-medium glass-label !mb-1.5";
+  const primaryBtnClass =
+    "inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-60 disabled:active:scale-100 bg-blue-600 hover:bg-blue-500 transition-all active:scale-95 shadow-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50";
 
   return (
     <div className="animate-fade-up w-full min-w-0 space-y-6">
       <div className="min-w-0">
-        <h1 className="text-lg sm:text-xl font-bold truncate text-white">โปรไฟล์</h1>
-        <p className="text-sm mt-0.5 text-slate-400">
-          จัดการข้อมูลส่วนตัวและรหัสผ่าน
+        <h1 className="text-lg sm:text-xl font-bold truncate glass-text">โปรไฟล์</h1>
+        <p className="text-sm mt-0.5 glass-muted-text">
+          จัดการข้อมูลส่วนตัว ลายเซ็น และรหัสผ่าน
         </p>
       </div>
 
-      <div className="rounded-xl border border-white/10 p-4 sm:p-5 w-full bg-slate-900/50 backdrop-blur-md shadow-2xl ring-1 ring-white/5">
+      <div className="glass-card p-4 sm:p-5 w-full ring-1 ring-[var(--glass-card-border)]">
         <div className="flex items-center gap-2 mb-4 shrink-0">
-          <User size={18} className="text-slate-400 shrink-0" aria-hidden />
-          <h2 className="font-bold text-sm text-slate-200">ข้อมูลบัญชี</h2>
+          <User size={18} className="glass-muted-text shrink-0" aria-hidden />
+          <h2 className="font-bold text-sm glass-text">ข้อมูลบัญชี</h2>
         </div>
 
         <SegmentedTabs
@@ -282,13 +331,13 @@ export default function ProfilePage() {
             <form onSubmit={handleSaveProfile} className="w-full">
               {loadError && (
                 <div
-                  className="mb-4 rounded-xl border border-red-500/30 px-3 py-2 text-sm bg-red-500/10 text-red-400"
+                  className="mb-4 rounded-xl border border-red-500/30 px-3 py-2 text-sm bg-red-500/10 text-red-600 dark:text-red-400"
                   role="alert"
                 >
                   {loadError}
                 </div>
               )}
-              <div className="rounded-xl border border-white/10 bg-slate-950/40 backdrop-blur-sm p-4 sm:p-5">
+              <div className={panelClass}>
                 <div className="flex flex-col sm:flex-row items-start gap-4">
                   <div className="shrink-0">
                     {avatarPreview && !avatarLoadFailed ? (
@@ -296,15 +345,13 @@ export default function ProfilePage() {
                         src={avatarPreview}
                         alt="รูปโปรไฟล์"
                         sizes={MANAGED_IMAGE_SIZES.avatar2xl}
-                        frameClassName="w-24 h-24 rounded-full border-2 border-white/20 bg-slate-800/50"
+                        frameClassName="w-24 h-24 rounded-full border-2 border-[var(--glass-card-border)] bg-[var(--glass-hover)]"
                         imageClassName="w-full h-full object-cover"
                         onError={() => setAvatarLoadFailed(true)}
-                        imageOverlay={<div className="absolute inset-0 pointer-events-none bg-black/20" />}
+                        imageOverlay={<div className="absolute inset-0 pointer-events-none bg-black/10 dark:bg-black/20" />}
                       />
                     ) : (
-                      <div
-                        className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold text-white bg-slate-700"
-                      >
+                      <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold text-white bg-slate-500 dark:bg-slate-700">
                         {avatarFallbackText}
                       </div>
                     )}
@@ -341,18 +388,18 @@ export default function ProfilePage() {
                       <Button
                         type="button"
                         onClick={() => avatarInputRef.current?.click()}
-                        className="flex items-center gap-2 min-h-[44px] px-3 py-2 rounded-xl border border-white/10 text-xs sm:text-sm font-medium bg-slate-800/50 text-slate-300 hover:bg-slate-700/60 hover:text-white transition-all active:scale-95 cursor-pointer shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                        className="flex items-center gap-2 min-h-[44px] px-3 py-2 rounded-xl border border-[var(--glass-input-border)] text-xs sm:text-sm font-medium bg-[var(--glass-input-bg)] glass-muted-text hover:bg-[var(--glass-hover)] hover:text-[var(--glass-text)] transition-all active:scale-95 cursor-pointer shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
                         aria-label="เปลี่ยนรูปโปรไฟล์"
                       >
                         <Camera size={16} /> เปลี่ยนรูป
                       </Button>
                       {avatarPreview && (
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-[11px] glass-subtle-text">
                           ตัวอย่างพร้อมอัปโหลด
                         </div>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] glass-subtle-text">
                       รองรับ JPG/PNG
                     </p>
                   </div>
@@ -360,10 +407,10 @@ export default function ProfilePage() {
 
                 <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold truncate text-white">
+                    <div className="text-sm font-semibold truncate glass-text">
                       {profile?.name ?? form.name ?? "-"}
                     </div>
-                    <div className="text-xs truncate text-slate-400">
+                    <div className="text-xs truncate glass-muted-text">
                       {profile?.email ?? form.email ?? "-"}
                     </div>
                   </div>
@@ -374,7 +421,7 @@ export default function ProfilePage() {
 
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                    <Label className={labelClass}>
                       ชื่อ-สกุล
                     </Label>
                     <Input
@@ -387,7 +434,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                    <Label className={labelClass}>
                       Username
                     </Label>
                     <Input
@@ -396,13 +443,13 @@ export default function ProfilePage() {
                       value={profile?.username ?? ""}
                       disabled
                     />
-                    <p className="text-xs mt-1 text-slate-500">
+                    <p className="text-xs mt-1 glass-subtle-text">
                       ไม่สามารถแก้ไขได้
                     </p>
                   </div>
 
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                    <Label className={labelClass}>
                       อีเมล
                     </Label>
                     <Input
@@ -415,7 +462,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                    <Label className={labelClass}>
                       เบอร์โทร
                     </Label>
                     <Input
@@ -428,7 +475,7 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="sm:col-span-2">
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                    <Label className={labelClass}>
                       ตำแหน่ง
                     </Label>
                     <Input
@@ -441,32 +488,84 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-white/10 flex justify-end">
+                <div className="mt-6 pt-6 border-t border-[var(--glass-card-border)] flex justify-end">
                   <Button
                     type="submit"
                     disabled={saving}
-                    className="inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-60 disabled:active:scale-100 bg-blue-600 hover:bg-blue-500 transition-all active:scale-95 shadow-lg shadow-blue-900/30 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                    className={primaryBtnClass}
                   >
                     {saving ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
                   </Button>
                 </div>
               </div>
             </form>
+          ) : tab === "signature" ? (
+            <div className="w-full">
+              <div className={panelClass}>
+                <div className="flex items-center gap-2 mb-4">
+                  <PenLine
+                    size={18}
+                    className="glass-muted-text shrink-0"
+                    aria-hidden
+                  />
+                  <h3 className="text-sm font-bold glass-text">
+                    ลายเซ็นเจ้าหน้าที่
+                  </h3>
+                </div>
+                <p className="text-xs glass-muted-text mb-4">
+                  ต้องมีลายเซ็นก่อนมอบหมายงาน ย้ายนอกสัญญา ปิดงาน หรือ Reopen
+                </p>
+                {hasSignature && profile?.id ? (
+                  <div className="mb-4 rounded-xl border border-[var(--glass-card-border)] bg-white p-3">
+                    <p className="text-xs glass-muted-text mb-2">
+                      ลายเซ็นปัจจุบัน
+                    </p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      key={signaturePreviewKey}
+                      src={`/user-images/${profile.id}/signature?t=${signaturePreviewKey}`}
+                      alt="ลายเซ็นปัจจุบัน"
+                      className="max-h-28 w-auto object-contain"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+                    ยังไม่มีลายเซ็น — กรุณาวาดด้านล่างแล้วกดบันทึก
+                  </p>
+                )}
+                <SignaturePad handleRef={signaturePadRef} height={180} />
+                <div className="mt-6 pt-6 border-t border-[var(--glass-card-border)] flex justify-end">
+                  <Button
+                    type="button"
+                    disabled={signatureSaving}
+                    onClick={() => void handleSaveSignature()}
+                    className={primaryBtnClass}
+                  >
+                    {signatureSaving
+                      ? "กำลังบันทึก..."
+                      : hasSignature
+                        ? "อัปเดตลายเซ็น"
+                        : "บันทึกลายเซ็น"}
+                  </Button>
+                </div>
+              </div>
+            </div>
           ) : (
             <form onSubmit={handleChangePassword} className="w-full">
-              <div className="rounded-xl border border-white/10 bg-slate-950/40 backdrop-blur-sm p-4 sm:p-5">
+              <div className={panelClass}>
                 <div className="flex items-center gap-2 mb-4">
-                  <Lock size={18} className="text-slate-400 shrink-0" aria-hidden />
-                  <h3 className="text-sm font-bold text-slate-200">เปลี่ยนรหัสผ่าน</h3>
+                  <Lock size={18} className="glass-muted-text shrink-0" aria-hidden />
+                  <h3 className="text-sm font-bold glass-text">เปลี่ยนรหัสผ่าน</h3>
                 </div>
 
                 <div className="space-y-4">
-                  <section className="rounded-xl border border-white/10 p-4 bg-slate-900/40">
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                  <section className={sectionClass}>
+                    <Label className={labelClass}>
                       รหัสผ่านปัจจุบัน
                     </Label>
                     <div className="relative">
                       <Input
+                        key={showCurrentPassword ? "current-text" : "current-password"}
                         type={showCurrentPassword ? "text" : "password"}
                         required
                         className="form-input-glass pr-11"
@@ -489,12 +588,13 @@ export default function ProfilePage() {
                     </div>
                   </section>
 
-                  <section className="rounded-xl border border-white/10 p-4 bg-slate-900/40">
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                  <section className={sectionClass}>
+                    <Label className={labelClass}>
                       รหัสผ่านใหม่
                     </Label>
                     <div className="relative">
                       <Input
+                        key={showNewPassword ? "new-text" : "new-password"}
                         type={showNewPassword ? "text" : "password"}
                         required
                         minLength={6}
@@ -516,17 +616,18 @@ export default function ProfilePage() {
                         {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </Button>
                     </div>
-                    <p className="text-[11px] mt-1.5 text-slate-500">
+                    <p className="text-[11px] mt-1.5 glass-subtle-text">
                       ต้องมีความยาวอย่างน้อย 6 ตัวอักษร
                     </p>
                   </section>
 
-                  <section className="rounded-xl border border-white/10 p-4 bg-slate-900/40">
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300">
+                  <section className={sectionClass}>
+                    <Label className={labelClass}>
                       ยืนยันรหัสผ่านใหม่
                     </Label>
                     <div className="relative">
                       <Input
+                        key={showConfirmPassword ? "confirm-text" : "confirm-password"}
                         type={showConfirmPassword ? "text" : "password"}
                         required
                         className="form-input-glass pr-11"
@@ -550,11 +651,11 @@ export default function ProfilePage() {
                   </section>
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-white/10 flex justify-end">
+                <div className="mt-6 pt-6 border-t border-[var(--glass-card-border)] flex justify-end">
                   <Button
                     type="submit"
                     disabled={saving}
-                    className="inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-60 disabled:active:scale-100 bg-blue-600 hover:bg-blue-500 transition-all active:scale-95 shadow-lg shadow-blue-900/30 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                    className={primaryBtnClass}
                   >
                     {saving ? "กำลังบันทึก..." : "เปลี่ยนรหัสผ่าน"}
                   </Button>

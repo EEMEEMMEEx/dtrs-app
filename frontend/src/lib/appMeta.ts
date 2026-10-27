@@ -16,19 +16,24 @@ function firstNonEmpty(...values: Array<string | undefined | null>): string | nu
 
 const packageVersion = firstNonEmpty(packageJson.version) ?? "0.1.0";
 
+/** Version badge SoT: NEXT_PUBLIC_APP_VERSION → frontend/package.json (never DB). */
 export const FOOTER_ENV_FALLBACK: AppMeta = {
-  appName: firstNonEmpty(process.env.NEXT_PUBLIC_APP_NAME, "ระบบแจ้งซ่อม CCTV") ?? "ระบบแจ้งซ่อม CCTV",
+  appName: firstNonEmpty(process.env.NEXT_PUBLIC_APP_NAME, "ระบบแจ้งซ่อม") ?? "ระบบแจ้งซ่อม",
   companyName:
     firstNonEmpty(process.env.NEXT_PUBLIC_COMPANY_NAME, "Forth Co., Ltd.") ?? "Forth Co., Ltd.",
   version: firstNonEmpty(process.env.NEXT_PUBLIC_APP_VERSION, packageVersion) ?? packageVersion,
 };
 
+/**
+ * Resolve footer meta. `input` may supply appName/companyName (e.g. from DB).
+ * `input.version` is ignored — product version comes only from env / package.json.
+ */
 export function resolveFooterAppMeta(input?: Partial<AppMeta> | null): AppMeta {
   return {
     appName: firstNonEmpty(input?.appName, FOOTER_ENV_FALLBACK.appName) ?? FOOTER_ENV_FALLBACK.appName,
     companyName:
       firstNonEmpty(input?.companyName, FOOTER_ENV_FALLBACK.companyName) ?? FOOTER_ENV_FALLBACK.companyName,
-    version: firstNonEmpty(input?.version, FOOTER_ENV_FALLBACK.version) ?? FOOTER_ENV_FALLBACK.version,
+    version: FOOTER_ENV_FALLBACK.version,
   };
 }
 

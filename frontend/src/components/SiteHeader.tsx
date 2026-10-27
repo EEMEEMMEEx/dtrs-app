@@ -1,35 +1,97 @@
 "use client";
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
-import { FileWarning, Search, LayoutDashboard } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import ManagedImage, { MANAGED_IMAGE_SIZES } from '@/components/ManagedImage';
-import ManagedImageFrame from '@/components/ManagedImageFrame';
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { FileWarning, Search, LayoutDashboard } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import ManagedImage, { MANAGED_IMAGE_SIZES } from "@/components/ManagedImage";
+import ManagedImageFrame from "@/components/ManagedImageFrame";
+import ThemeToggle from "@/components/ThemeToggle";
+
+import { unwrapApiData } from "@/lib/apiResponse";
+import { can, PERMISSIONS, type SessionUser } from "@/lib/auth/permissions";
 
 /** ความสูงรวมของ header (stripe + แถบหลัก) ใช้สำหรับ spacer */
 export const SITE_HEADER_HEIGHT = 62; // px
 
 const STEP_MENU_BASE = [
-  { label: 'แจ้งปัญหา', href: '/public/report', icon: FileWarning },
-  { label: 'ตรวจสอบสถานะ', href: '/public/status', icon: Search },
+  { label: "แจ้งปัญหา", href: "/public/report", icon: FileWarning },
+  { label: "ตรวจสอบสถานะ", href: "/public/status", icon: Search },
 ] as const;
 
-const MENU_OVERVIEW = { label: 'ภาพรวม', href: '/dashboard', icon: LayoutDashboard } as const;
+const MENU_OVERVIEW = { label: "ภาพรวม", href: "/dashboard", icon: LayoutDashboard } as const;
+const MENU_OOC = { label: "งานนอกสัญญา", href: "/public/report-ooc", icon: FileWarning } as const;
 
 interface SiteHeaderProps {
   /** เนื้อหาด้านขวา (ถ้าไม่ส่ง = ตามสถานะ login หรือลิงก์ เจ้าหน้าที่) */
   right?: React.ReactNode;
   /** ข้อความใต้ชื่อระบบ */
   subtitle?: string;
+  /** คงไว้เพื่อ API เดิม — สไตล์ใช้ CSS tokens ไม่พึ่ง isDark (กัน hydration mismatch) */
   isDark?: boolean;
+  /** permissions จาก parent (เช่น DashboardLayoutShell) ถ้ามี ไม่ต้อง fetch ซ้ำ */
+  permissions?: string[] | null;
 }
 
-export default function SiteHeader({ right, subtitle, isDark = false }: SiteHeaderProps) {
+export default function SiteHeader({
+  right,
+  subtitle,
+  permissions: propPermissions,
+}: SiteHeaderProps) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
-  const isLoggedIn = status === 'authenticated' && !!session?.user;
+  const isLoggedIn = status === "authenticated" && !!session?.user;
+
+  const [fetchedPermissions, setFetchedPermissions] = useState<string[] | null>(null);
+  const token = (session as { accessToken?: string })?.accessToken;
+  const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4100/api";
+
+  useEffect(() => {
+    if (propPermissions !== undefined || !token || status !== "authenticated") {
+      setFetchedPermissions(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API}/roles/me/permissions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((raw) => {
+        if (cancelled) return;
+        const payload = unwrapApiData<{ permissions?: string[] }>(raw);
+        setFetchedPermissions(Array.isArray(payload?.permissions) ? payload.permissions : []);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedPermissions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propPermissions, token, status, API]);
+
+  const effectivePermissions =
+    propPermissions !== undefined ? propPermissions : fetchedPermissions;
+  const userRole = (
+    (session as { userRole?: string })?.userRole ??
+    (session?.user as { role?: string })?.role ??
+    ""
+  ).toUpperCase();
+
+  const sessionUser = useMemo<SessionUser | null>(() => {
+    if (!isLoggedIn) return null;
+    return {
+      id: (session as { userId?: string })?.userId ?? (session?.user as { id?: string })?.id,
+      name: session?.user?.name,
+      role: userRole,
+      permissions: effectivePermissions,
+    };
+  }, [isLoggedIn, session, userRole, effectivePermissions]);
+
+  const showOoc = useMemo(() => {
+    if (!sessionUser) return false;
+    return can(sessionUser, PERMISSIONS.OOC_VIEW);
+  }, [sessionUser]);
 
   const avatarImage = useMemo(
     () => (session?.user as { image?: string })?.image as string | undefined,
@@ -42,7 +104,9 @@ export default function SiteHeader({ right, subtitle, isDark = false }: SiteHead
   }, [avatarImage]);
 
   const stepMenu = isLoggedIn
-    ? [MENU_OVERVIEW, STEP_MENU_BASE[0], STEP_MENU_BASE[1]]
+    ? showOoc
+      ? [MENU_OVERVIEW, STEP_MENU_BASE[0], MENU_OOC, STEP_MENU_BASE[1]]
+      : [MENU_OVERVIEW, STEP_MENU_BASE[0], STEP_MENU_BASE[1]]
     : [...STEP_MENU_BASE];
 
   const getInitials = () => {
@@ -69,41 +133,31 @@ export default function SiteHeader({ right, subtitle, isDark = false }: SiteHead
         ? (
             <Link
               href="/dashboard"
-              className={`flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg border transition-colors min-w-0 ${
-                isDark 
-                  ? 'border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800' 
-                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
+              className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg border transition-colors min-w-0 border-[var(--glass-input-border)] bg-[var(--glass-input-bg)] glass-muted-text hover:bg-[var(--glass-hover)]"
             >
               {session?.user && avatarImage && !avatarImgError ? (
                 <ManagedImageFrame
                   src={avatarImage}
                   alt={session.user.name || "โปรไฟล์"}
                   sizes={MANAGED_IMAGE_SIZES.avatarXs}
-                  frameClassName={`w-7 h-7 rounded-full border shrink-0 ${isDark ? 'border-slate-600' : 'border-slate-200'}`}
+                  frameClassName="w-7 h-7 rounded-full border shrink-0 border-[var(--glass-card-border)]"
                   imageClassName="object-cover"
                   onError={() => setAvatarImgError(true)}
                 />
               ) : (
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 bg-slate-600"
-                >
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 bg-slate-600">
                   {getInitials()}
                 </div>
               )}
               <span className="text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-[140px]">
-                {session?.user?.name ?? 'เจ้าหน้าที่'}
+                {session?.user?.name ?? "เจ้าหน้าที่"}
               </span>
             </Link>
           )
         : (
             <Link
               href="/login"
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                isDark 
-                  ? 'border-slate-700 text-slate-300 bg-slate-800/50 hover:bg-slate-800 hover:text-white' 
-                  : 'border-slate-300 text-slate-600 bg-white hover:bg-slate-50'
-              }`}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors border border-[var(--glass-input-border)] bg-[var(--glass-input-bg)] glass-muted-text hover:bg-[var(--glass-hover)] hover:text-[var(--glass-text)]"
             >
               เจ้าหน้าที่
             </Link>
@@ -111,62 +165,71 @@ export default function SiteHeader({ right, subtitle, isDark = false }: SiteHead
 
   return (
     <>
-      <header
-        className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-md shadow-sm border-b ${
-          isDark ? 'bg-[#0a1128]/80 border-slate-800' : 'bg-white/80 border-slate-200'
-        }`}
-      >
-        <div className="h-1" style={{ background: 'linear-gradient(90deg, #2563eb, #3b82f6, #60a5fa)' }} />
+      <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md shadow-sm border-b glass-header-surface border-[var(--glass-header-border)]">
+        <div className="h-1" style={{ background: "linear-gradient(90deg, #2563eb, #3b82f6, #60a5fa)" }} />
 
         <div className="flex items-center justify-between px-4 sm:px-6 h-14 gap-4 min-w-0">
-          {/* Logo + ชื่อระบบ */}
           <Link href="/" className="flex items-center gap-3 group shrink-0 min-w-0">
             <div className="p-1.5">
               <ManagedImage
-                src="/logo/dopa-logo.png"
+                src="/logo/NBTC.png"
                 alt="DOPA"
-                width={28}
-                height={28}
+                width={960}
+                height={1265}
                 sizes={MANAGED_IMAGE_SIZES.avatarXs}
                 className="shrink-0"
-                style={{ objectFit: 'contain' }}
+                style={{ width: 28, height: "auto", objectFit: "contain" }}
               />
             </div>
             <div className="leading-tight min-w-0 hidden sm:block">
-              <p className={`text-sm font-bold tracking-tight truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>ระบบแจ้งซ่อม CCTV</p>
-              <p className={`text-[11px] font-medium truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {subtitle || 'กรมการปกครอง'}
+              <p className="text-sm font-bold tracking-tight truncate glass-text">ระบบแจ้งซ่อม</p>
+              <p className="text-[11px] font-medium truncate glass-muted-text">
+                {subtitle || "กรมการปกครอง"}
               </p>
             </div>
           </Link>
 
-          {/* เมนูกลาง: ภาพรวม / แจ้งปัญหา / ตรวจสอบสถานะ (ภาพรวมเมื่อ login) */}
           <nav className="flex items-center gap-1 sm:gap-2 flex-1 justify-center min-w-0" aria-label="เมนูหลัก">
             {stepMenu.map((item) => {
-              const isActive =
-                pathname === item.href ||
-                (item.href !== '/public/report' && item.href !== '/public/status' && pathname.startsWith(item.href)) ||
-                (item.href === '/public/status' && pathname.startsWith('/public/status')) ||
-                (item.href === '/public/report' && pathname.startsWith('/public/report'));
+              const isOocItem = item.href === "/public/report-ooc";
+              const isActive = isOocItem
+                ? pathname === "/public/report-ooc" ||
+                  pathname.startsWith("/public/report-ooc/") ||
+                  pathname.startsWith("/dashboard/report-ooc")
+                : item.href === "/public/report"
+                  ? pathname === "/public/report" ||
+                    (pathname.startsWith("/public/report/") &&
+                      !pathname.startsWith("/public/report-ooc"))
+                  : item.href === "/public/status"
+                    ? pathname.startsWith("/public/status")
+                    : pathname.startsWith("/dashboard") &&
+                      !pathname.startsWith("/dashboard/report-ooc");
+
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 shrink-0 ${
-                    isActive
-                      ? (isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-50 text-blue-700")
-                      : (isDark ? "text-slate-400 hover:text-white hover:bg-white/10" : "text-slate-500 hover:text-slate-800 hover:bg-slate-50")
+                  aria-label={item.label}
+                  title={item.label}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`min-h-[44px] min-w-[44px] flex items-center justify-center sm:justify-start gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 motion-reduce:transition-none shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background,#0a1128)] ${
+                    isActive ? "glass-nav-active" : "glass-nav-item"
                   }`}
                 >
-                  <item.icon size={16} className={isActive ? (isDark ? "text-blue-400" : "text-blue-600") : (isDark ? "text-slate-500" : "text-slate-400")} />
+                  <item.icon
+                    size={16}
+                    aria-hidden="true"
+                    className={isActive ? "text-glass-accent" : "text-glass-subtle"}
+                  />
                   <span className="hidden sm:inline-block">{item.label}</span>
+                  <span className="sr-only sm:hidden">{item.label}</span>
                 </Link>
               );
             })}
           </nav>
 
-          {/* ด้านขวา: ข้อมูลผู้ใช้ (เมื่อ login) หรือ เจ้าหน้าที่ */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <ThemeToggle />
             {rightContent}
           </div>
         </div>

@@ -3,15 +3,29 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { useSession } from "next-auth/react";
-import { Loader2, Save, Info, Send, Settings, Eye, EyeOff, Mail, Search, Trash2, ChevronDown, Download } from "lucide-react";
+import { Loader2, Save, Info, Send, Settings, Eye, EyeOff, Mail, Search, Trash2, ChevronDown, Download, AlertTriangle } from "lucide-react";
 import DashboardRouteLoading from "@/components/DashboardRouteLoading";
 import { toastSuccess, toastError } from "@/lib/toast";
 import { FOOTER_ENV_FALLBACK, resolveFooterAppMeta, type AppMeta } from "@/lib/appMeta";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import GlassReactSelect, {
+  glassSelectRequiredValue,
+  type GlassSelectOption,
+} from "@/components/dashboard/GlassReactSelect";
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4100/api";
+
+const SMTP_SECURE_OPTIONS: GlassSelectOption[] = [
+  { value: "false", label: "false (STARTTLS / Port 587)" },
+  { value: "true", label: "true (SSL / Port 465)" },
+];
+
+const ORPHAN_OLDER_THAN_OPTIONS: GlassSelectOption[] = [7, 14, 30, 60, 90, 180, 365].map(
+  (d) => ({ value: String(d), label: String(d) }),
+);
 
 function unwrapApiData<T>(root: unknown): T | null {
   if (!root) return null;
@@ -185,8 +199,13 @@ export default function SettingsPage() {
         setAppMetaForm({
           appName: appMeta.appName ?? "",
           companyName: appMeta.companyName ?? "",
-          version: appMeta.version ?? "",
+          version: FOOTER_ENV_FALLBACK.version,
         });
+      } else {
+        setAppMetaForm((prev) => ({
+          ...prev,
+          version: FOOTER_ENV_FALLBACK.version,
+        }));
       }
 
       const smtp = unwrapApiData<EmailSmtpResponse>(smtpRes.data);
@@ -313,7 +332,6 @@ export default function SettingsPage() {
       const body = {
         appName: appMetaForm.appName.trim(),
         companyName: appMetaForm.companyName.trim(),
-        version: appMetaForm.version.trim(),
       };
       const res = await axios.put(`${API}/settings/app-meta`, body, {
         headers: { Authorization: `Bearer ${token}` },
@@ -322,7 +340,7 @@ export default function SettingsPage() {
       setAppMetaForm({
         appName: updated?.appName ?? body.appName,
         companyName: updated?.companyName ?? body.companyName,
-        version: updated?.version ?? body.version,
+        version: FOOTER_ENV_FALLBACK.version,
       });
       toastSuccess("บันทึกข้อมูล Footer สำเร็จ");
     } catch (err: unknown) {
@@ -588,16 +606,19 @@ export default function SettingsPage() {
   };
 
   const disabledForm = sessionStatus !== "authenticated" || !token;
-  const resolvedFooterMeta = resolveFooterAppMeta(appMetaForm);
+  const resolvedFooterMeta = resolveFooterAppMeta({
+    appName: appMetaForm.appName,
+    companyName: appMetaForm.companyName,
+  });
 
   if (loadingSettings) {
     return (
       <div className="animate-fade-up w-full min-w-0 space-y-6">
         <div className="min-w-0">
-          <h1 className="text-lg sm:text-xl font-bold truncate text-white">
+          <h1 className="text-lg sm:text-xl font-bold truncate glass-text">
             ตั้งค่าระบบ
           </h1>
-          <p className="text-sm mt-0.5 text-slate-400">
+          <p className="text-sm mt-0.5 glass-muted-text">
             กำหนดค่าอีเมล (SMTP)
           </p>
         </div>
@@ -609,28 +630,42 @@ export default function SettingsPage() {
   return (
     <div className="animate-fade-up w-full min-w-0 space-y-6">
       <div className="min-w-0">
-        <h1 className="text-lg sm:text-xl font-bold truncate text-white">
+        <h1 className="text-lg sm:text-xl font-bold truncate glass-text">
           ตั้งค่าระบบ
         </h1>
-        <p className="text-sm mt-0.5 text-slate-400">
+        <p className="text-sm mt-0.5 glass-muted-text">
           กำหนดค่าอีเมล (SMTP)
         </p>
       </div>
 
-      <details className="group rounded-xl border border-white/10 p-4 sm:p-5 w-full bg-slate-900/50 backdrop-blur-sm" open>
+      <details className="group glass-card p-4 sm:p-5 w-full" open>
         <summary className="list-none flex items-center gap-2 mb-4 shrink-0 cursor-pointer">
-          <Info size={18} className="text-slate-400 shrink-0" aria-hidden />
-          <h2 className="font-bold text-sm text-slate-200 flex-1">
+          <Info size={18} className="glass-muted-text shrink-0" aria-hidden />
+          <h2 className="font-bold text-sm glass-text flex-1">
             ข้อมูลแอปสำหรับ Footer
           </h2>
-          <span className="text-xs text-slate-400 hidden sm:inline">ย่อ/ขยาย</span>
-          <ChevronDown size={16} className="text-slate-400 transition-transform group-open:rotate-180" />
+          <span className="text-xs glass-muted-text hidden sm:inline">ย่อ/ขยาย</span>
+          <ChevronDown size={16} className="glass-muted-text transition-transform group-open:rotate-180" />
         </summary>
+
+        <Alert
+          variant="destructive"
+          className="mb-4 rounded-xl border-red-300 bg-red-50 text-red-800 backdrop-blur-sm dark:border-red-500/25 dark:bg-red-950/40 dark:text-red-200"
+        >
+          <AlertTriangle
+            size={18}
+            className="shrink-0 text-red-600 dark:text-red-400"
+            aria-hidden
+          />
+          <AlertDescription className="text-sm font-semibold text-red-800 dark:text-red-200">
+            สำหรับ IT เท่านั้น
+          </AlertDescription>
+        </Alert>
 
         <form onSubmit={handleSaveAppMeta} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="app-meta-name">
+              <Label className="glass-label" htmlFor="app-meta-name">
                 ชื่อระบบ
               </Label>
               <Input
@@ -645,7 +680,7 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="app-meta-company">
+              <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="app-meta-company">
                 บริษัท / หน่วยงาน
               </Label>
               <Input
@@ -660,51 +695,58 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="app-meta-version">
-                เวอร์ชันที่แสดง
+              <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="app-meta-version">
+                เวอร์ชันที่แสดง (จาก build)
               </Label>
               <Input
                 id="app-meta-version"
                 type="text"
                 className="form-input-glass"
-                value={appMetaForm.version}
-                onChange={(e) => setAppMetaForm((prev) => ({ ...prev, version: e.target.value }))}
-                placeholder={FOOTER_ENV_FALLBACK.version}
-                disabled={disabledForm || savingAppMeta}
-                maxLength={40}
+                value={FOOTER_ENV_FALLBACK.version}
+                readOnly
+                disabled
+                aria-readonly="true"
+                title="กำหนดจาก frontend/package.json หรือ NEXT_PUBLIC_APP_VERSION — bump เมื่อ commit CHANGELOG.md"
               />
+              <p className="mt-1.5 text-xs leading-relaxed glass-subtle-text">
+                Source of truth: <code className="glass-muted-text">frontend/package.json</code> (SemVer) ·
+                override ชั่วคราวด้วย <code className="glass-muted-text">NEXT_PUBLIC_APP_VERSION</code> ·
+                ไม่บันทึกลง DB — ดู <code className="glass-muted-text">CHANGELOG.md</code>
+              </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4 space-y-3">
-            <p className="text-sm font-medium text-slate-200">ค่าที่จะแสดงจริงใน Footer</p>
+          <div className="glass-card p-4 space-y-3">
+            <p className="text-sm font-medium glass-text">ค่าที่จะแสดงจริงใน Footer</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-              <div className="rounded-lg border border-white/10 bg-slate-900/30 px-3 py-2.5">
-                <p className="text-xs text-slate-500">ชื่อระบบ</p>
-                <p className="mt-1 text-slate-200 wrap-break-word">{resolvedFooterMeta.appName}</p>
+              <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] px-3 py-2.5">
+                <p className="text-xs glass-subtle-text">ชื่อระบบ</p>
+                <p className="mt-1 glass-text wrap-break-word">{resolvedFooterMeta.appName}</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-slate-900/30 px-3 py-2.5">
-                <p className="text-xs text-slate-500">บริษัท / หน่วยงาน</p>
-                <p className="mt-1 text-slate-200 wrap-break-word">{resolvedFooterMeta.companyName}</p>
+              <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] px-3 py-2.5">
+                <p className="text-xs glass-subtle-text">บริษัท / หน่วยงาน</p>
+                <p className="mt-1 glass-text wrap-break-word">{resolvedFooterMeta.companyName}</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-slate-900/30 px-3 py-2.5">
-                <p className="text-xs text-slate-500">เวอร์ชัน</p>
-                <p className="mt-1 text-slate-200 wrap-break-word">{resolvedFooterMeta.version}</p>
+              <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] px-3 py-2.5">
+                <p className="text-xs glass-subtle-text">เวอร์ชัน</p>
+                <p className="mt-1 glass-text wrap-break-word">{resolvedFooterMeta.version}</p>
               </div>
             </div>
-            <p className="text-xs leading-relaxed text-slate-500">
-              ลำดับ fallback: <code className="text-slate-300">DB</code> →{" "}
-              <code className="text-slate-300">NEXT_PUBLIC_APP_NAME</code> /{" "}
-              <code className="text-slate-300">NEXT_PUBLIC_COMPANY_NAME</code> /{" "}
-              <code className="text-slate-300">NEXT_PUBLIC_APP_VERSION</code> →{" "}
-              <code className="text-slate-300">package.json</code> (ใช้กับ version เท่านั้น)
+            <p className="text-xs leading-relaxed glass-subtle-text">
+              ชื่อระบบ / บริษัท: <code className="glass-muted-text">DB</code> →{" "}
+              <code className="glass-muted-text">NEXT_PUBLIC_APP_NAME</code> /{" "}
+              <code className="glass-muted-text">NEXT_PUBLIC_COMPANY_NAME</code>
             </p>
-            <p className="text-xs leading-relaxed text-slate-500">
-              เว้นว่างช่องใดไว้ ระบบจะ fallback ตามลำดับข้างต้นทันทีโดยไม่ต้องใส่ค่าซ้ำใน DB
+            <p className="text-xs leading-relaxed glass-subtle-text">
+              เวอร์ชัน: <code className="glass-muted-text">NEXT_PUBLIC_APP_VERSION</code> →{" "}
+              <code className="glass-muted-text">frontend/package.json</code> (ไม่ใช้ค่าจาก DB)
+            </p>
+            <p className="text-xs leading-relaxed glass-subtle-text">
+              เว้นว่างช่องชื่อระบบ/บริษัทไว้ ระบบจะ fallback ตามลำดับข้างต้นทันทีโดยไม่ต้องใส่ค่าซ้ำใน DB
             </p>
           </div>
 
-          <div className="pt-2 border-t border-white/10 flex justify-end">
+          <div className="pt-2 border-t border-[var(--glass-card-border)] flex justify-end">
             <Button
               type="submit"
               disabled={disabledForm || savingAppMeta}
@@ -717,21 +759,35 @@ export default function SettingsPage() {
         </form>
       </details>
 
-      <details className="group rounded-xl border border-white/10 p-4 sm:p-5 w-full bg-slate-900/50 backdrop-blur-sm">
+      <details className="group glass-card p-4 sm:p-5 w-full">
         <summary className="list-none flex items-center gap-2 mb-4 shrink-0 cursor-pointer">
-          <Settings size={18} className="text-slate-400 shrink-0" aria-hidden />
-          <h2 className="font-bold text-sm text-slate-200 flex-1">
+          <Settings size={18} className="glass-muted-text shrink-0" aria-hidden />
+          <h2 className="font-bold text-sm glass-text flex-1">
             จัดการการส่งอีเมล (SMTP)
           </h2>
-          <span className="text-xs text-slate-400 hidden sm:inline">ย่อ/ขยาย</span>
-          <ChevronDown size={16} className="text-slate-400 transition-transform group-open:rotate-180" />
+          <span className="text-xs glass-muted-text hidden sm:inline">ย่อ/ขยาย</span>
+          <ChevronDown size={16} className="glass-muted-text transition-transform group-open:rotate-180" />
         </summary>
+
+          <Alert
+            variant="destructive"
+            className="mb-4 rounded-xl border-red-300 bg-red-50 text-red-800 backdrop-blur-sm dark:border-red-500/25 dark:bg-red-950/40 dark:text-red-200"
+          >
+            <AlertTriangle
+              size={18}
+              className="shrink-0 text-red-600 dark:text-red-400"
+              aria-hidden
+            />
+            <AlertDescription className="text-sm font-semibold text-red-800 dark:text-red-200">
+              สำหรับ IT เท่านั้น
+            </AlertDescription>
+          </Alert>
 
           <form onSubmit={handleSaveEmail} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="smtp-host">
+                    <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="smtp-host">
                       SMTP Host
                     </Label>
                     <Input
@@ -746,7 +802,7 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="smtp-port">
+                    <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="smtp-port">
                       SMTP Port
                     </Label>
                     <Input
@@ -761,25 +817,32 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="smtp-secure">
+                    <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="smtp-secure">
                       Secure (SSL/TLS)
                     </Label>
-                    <select
-                      id="smtp-secure"
-                      className="select-native-glass w-full"
-                      value={emailForm.secure}
-                      onChange={(e) => setEmailForm({ ...emailForm, secure: e.target.value })}
-                      disabled={disabledForm}
-                    >
-                      <option value="false">false (STARTTLS / Port 587)</option>
-                      <option value="true">true (SSL / Port 465)</option>
-                    </select>
+                    <GlassReactSelect
+                      inputId="smtp-secure"
+                      options={SMTP_SECURE_OPTIONS}
+                      value={glassSelectRequiredValue(
+                        emailForm.secure,
+                        SMTP_SECURE_OPTIONS,
+                        SMTP_SECURE_OPTIONS[0],
+                      )}
+                      onChange={(opt) => {
+                        if (!opt) return;
+                        setEmailForm({ ...emailForm, secure: opt.value });
+                      }}
+                      isDisabled={disabledForm}
+                      isSearchable={false}
+                      isClearable={false}
+                      aria-label="Secure SSL TLS"
+                    />
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="smtp-user">
+                    <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="smtp-user">
                       User (Username)
                     </Label>
                     <Input
@@ -793,7 +856,7 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="smtp-password">
+                    <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="smtp-password">
                       Password
                     </Label>
                     <Input
@@ -809,7 +872,7 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="smtp-from">
+                    <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="smtp-from">
                       Sender Email (From)
                     </Label>
                     <Input
@@ -826,11 +889,11 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
+              <div className="glass-card p-4">
                 <Label className="flex cursor-pointer items-start gap-3 group min-h-[44px]">
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900/60 text-blue-600 focus:ring-blue-500/50 shrink-0 cursor-pointer"
+                    className="mt-1 h-4 w-4 rounded border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] text-blue-600 focus:ring-blue-500/50 shrink-0 cursor-pointer"
                     checked={emailForm.tlsRejectUnauthorized}
                     onChange={(e) =>
                       setEmailForm({
@@ -841,20 +904,20 @@ export default function SettingsPage() {
                     disabled={disabledForm}
                     aria-describedby="smtp-tls-hint"
                   />
-                  <span className="text-sm text-slate-300 leading-snug">
+                  <span className="text-sm glass-muted-text leading-snug">
                     ตรวจสอบใบรับรอง TLS (ปิดเมื่อ SMTP ใช้ใบ self-signed หรือ CA ภายในองค์กร)
                   </span>
                 </Label>
-                <p id="smtp-tls-hint" className="text-xs text-slate-500 mt-2 pl-7">
+                <p id="smtp-tls-hint" className="text-xs glass-subtle-text mt-2 pl-7">
                   ปิดตัวเลือกนี้ช่วยแก้ข้อความ «self-signed certificate» — ใช้เฉพาะเครือข่ายที่เชื่อถือได้
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4 space-y-3">
-                <p className="text-sm font-medium text-slate-300">ทดสอบส่งอีเมล</p>
+              <div className="glass-card p-4 space-y-3">
+                <p className="text-sm font-medium glass-muted-text">ทดสอบส่งอีเมล</p>
                 <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
                   <div className="flex-1 min-w-0">
-                    <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="test-to">
+                    <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="test-to">
                       ส่งทดสอบไปที่
                     </Label>
                     <Input
@@ -871,18 +934,18 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => void handleTestEmail()}
                     disabled={disabledForm || testingEmail || savingEmail}
-                    className="inline-flex justify-center items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium transition-all active:scale-95 shadow-lg shadow-black/20 disabled:opacity-50 disabled:active:scale-100 cursor-pointer shrink-0 min-h-[44px]"
+                    className="inline-flex justify-center items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--glass-card-bg)] hover:bg-[var(--glass-nav-hover-bg)] glass-text font-medium transition-all active:scale-95 shadow-lg shadow-black/20 disabled:opacity-50 disabled:active:scale-100 cursor-pointer shrink-0 min-h-[44px]"
                   >
                     {testingEmail ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} aria-hidden />}
                     ทดสอบส่งอีเมล
                   </Button>
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs glass-subtle-text">
                   ใช้ค่าจากฟอร์มด้านบน (รวมรหัสผ่านที่เคยบันทึก หากไม่กรอกใหม่) — บันทึกได้ก่อนหรือหลังทดสอบ
                 </p>
               </div>
 
-              <div className="pt-6 border-t border-white/10 flex justify-end">
+              <div className="pt-6 border-t border-[var(--glass-card-border)] flex justify-end">
                 <Button
                   type="submit"
                   disabled={savingEmail || disabledForm}
@@ -895,24 +958,24 @@ export default function SettingsPage() {
           </form>
       </details>
 
-      <details className="group rounded-xl border border-white/10 p-4 sm:p-5 w-full bg-slate-900/50 backdrop-blur-sm">
+      <details className="group glass-card p-4 sm:p-5 w-full">
         <summary className="list-none flex items-center gap-2 mb-4 shrink-0 cursor-pointer">
-          <Mail size={18} className="text-slate-400 shrink-0" aria-hidden />
-          <h2 className="font-bold text-sm text-slate-200 flex-1">เทมเพลตอีเมลแจ้งงาน (HTML)</h2>
-          <span className="text-xs text-slate-400 hidden sm:inline">ย่อ/ขยาย</span>
-          <ChevronDown size={16} className="text-slate-400 transition-transform group-open:rotate-180" />
+          <Mail size={18} className="glass-muted-text shrink-0" aria-hidden />
+          <h2 className="font-bold text-sm glass-text flex-1">เทมเพลตอีเมลแจ้งงาน (HTML)</h2>
+          <span className="text-xs glass-muted-text hidden sm:inline">ย่อ/ขยาย</span>
+          <ChevronDown size={16} className="glass-muted-text transition-transform group-open:rotate-180" />
         </summary>
 
-        <p className="text-xs text-slate-400 mb-4 leading-relaxed" role="note">
-          Flow อัตโนมัติ: <span className="text-slate-300">แจ้งเหตุ</span> (หลังบันทึกคำร้อง) →{" "}
-          <span className="text-slate-300">รับเรื่อง / มอบหมาย</span> (เมื่อเปลี่ยนผู้รับงาน) →{" "}
-          <span className="text-slate-300">ปิดงาน</span> (เมื่อบันทึกแก้ไขครบหรือสถานะเป็นเสร็จสิ้น)
+        <p className="text-xs glass-muted-text mb-4 leading-relaxed" role="note">
+          Flow อัตโนมัติ: <span className="glass-muted-text">แจ้งเหตุ</span> (หลังบันทึกคำร้อง) →{" "}
+          <span className="glass-muted-text">รับเรื่อง / มอบหมาย</span> (เมื่อเปลี่ยนผู้รับงาน) →{" "}
+          <span className="glass-muted-text">ปิดงาน</span> (เมื่อบันทึกแก้ไขครบหรือสถานะเป็นเสร็จสิ้น)
           ต้องตั้งค่า SMTP ด้านบน และเปิดเทมเพลตที่ต้องการ — ผู้รับหลักตามคำอธิบายในแต่ละกล่อง
         </p>
 
         <form onSubmit={handleSaveEmailTemplates} className="space-y-6">
             <div>
-              <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="brand-logo-url">
+              <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="brand-logo-url">
                 URL โลโก้ (แสดงในอีเมล)
               </Label>
               <Input
@@ -926,13 +989,13 @@ export default function SettingsPage() {
                 placeholder="https://example.com/logo.png"
                 disabled={disabledForm}
               />
-              <p className="text-xs text-slate-500 mt-1.5">
+              <p className="text-xs glass-subtle-text mt-1.5">
                 ใช้ URL รูปแบบ https ที่เข้าถึงได้สาธารณะ หากเว้นว่างจะแสดงหัวข้อข้อความแทนโลโก้
               </p>
             </div>
 
             <div>
-              <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="email-public-base-url">
+              <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="email-public-base-url">
                 Public URL สำหรับลิงก์ในอีเมล
               </Label>
               <Input
@@ -946,13 +1009,13 @@ export default function SettingsPage() {
                     publicBaseUrl: e.target.value,
                   })
                 }
-                placeholder="https://cctv-app.forth.co.th"
+                placeholder="https://dtrs-app.forth.co.th"
                 disabled={disabledForm}
               />
-              <p className="text-xs text-slate-500 mt-1.5">
+              <p className="text-xs glass-subtle-text mt-1.5">
                 ใช้เป็นลิงก์ &quot;เปิดงานในระบบ&quot; และตรวจสอบสถานะในอีเมลแจ้งงาน — แนะนำใส่ URL Production
                 หาก backend รันที่ dev แต่ต้องการให้ผู้รับเมลคลิกเข้าเว็บจริง หากเว้นว่างระบบใช้ค่า{" "}
-                <code className="text-slate-400 text-[11px]">FRONTEND_BASE_URL</code> ของเซิร์ฟเวอร์
+                <code className="glass-muted-text text-[11px]">FRONTEND_BASE_URL</code> ของเซิร์ฟเวอร์
               </p>
             </div>
 
@@ -977,13 +1040,13 @@ export default function SettingsPage() {
             ).map((section) => (
               <div
                 key={section.key}
-                className="rounded-xl border border-white/10 bg-slate-950/40 p-4 space-y-3"
+                className="glass-card p-4 space-y-3"
               >
                 <div className="flex flex-wrap items-start gap-3 min-h-[44px]">
                   <input
                     type="checkbox"
                     id={`tpl-${section.key}-en`}
-                    className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900/60 text-blue-600 focus:ring-blue-500/50 shrink-0 cursor-pointer"
+                    className="mt-1 h-4 w-4 rounded border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] text-blue-600 focus:ring-blue-500/50 shrink-0 cursor-pointer"
                     checked={emailTemplatesForm[section.key].enabled}
                     onChange={(e) =>
                       setEmailTemplatesForm({
@@ -997,15 +1060,15 @@ export default function SettingsPage() {
                     disabled={disabledForm}
                   />
                   <div className="min-w-0 flex-1">
-                    <Label htmlFor={`tpl-${section.key}-en`} className="cursor-pointer font-medium text-slate-200">
+                    <Label htmlFor={`tpl-${section.key}-en`} className="cursor-pointer font-medium glass-text">
                       {section.title}
                     </Label>
-                    <p className="text-xs text-slate-500 mt-1">{section.hint}</p>
+                    <p className="text-xs glass-subtle-text mt-1">{section.hint}</p>
                   </div>
                 </div>
                 <div>
                   <Label
-                    className="mb-1.5 block text-sm font-medium text-slate-300"
+                    className="mb-1.5 block text-sm font-medium glass-muted-text"
                     htmlFor={`tpl-${section.key}-to`}
                   >
                     To เพิ่มเติม (คั่นด้วยจุลภาค)
@@ -1030,7 +1093,7 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <Label
-                    className="mb-1.5 block text-sm font-medium text-slate-300"
+                    className="mb-1.5 block text-sm font-medium glass-muted-text"
                     htmlFor={`tpl-${section.key}-cc`}
                   >
                     CC
@@ -1052,14 +1115,14 @@ export default function SettingsPage() {
                     placeholder="cc@company.com"
                     disabled={disabledForm}
                   />
-                  <p className="text-xs text-slate-500 mt-1.5">
+                  <p className="text-xs glass-subtle-text mt-1.5">
                     เว้นว่างได้ — จะไม่มี CC จากช่องนี้ (ยังแจ้งตามบทบาทด้านล่างได้เมื่อเลือก)
                   </p>
                 </div>
                 {rolesList.length > 0 ? (
-                  <div className="rounded-lg border border-white/10 bg-slate-900/30 p-3 space-y-2">
-                    <p className="text-xs font-medium text-slate-300">แจ้งเตือนผู้ใช้ในบทบาท (CC)</p>
-                    <p className="text-[11px] text-slate-500 leading-snug">
+                  <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] p-3 space-y-2">
+                    <p className="text-xs font-medium glass-muted-text">แจ้งเตือนผู้ใช้ในบทบาท (CC)</p>
+                    <p className="text-[11px] glass-subtle-text leading-snug">
                       เลือกบทบาทที่ต้องการส่งสำเนา — ระบบจะส่งไปยังอีเมลของผู้ใช้ที่ผูกบทบาทนั้น (ไม่รวมผู้ที่ไม่มีอีเมลในระบบ)
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -1068,11 +1131,11 @@ export default function SettingsPage() {
                         return (
                           <Label
                             key={r.id}
-                            className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-slate-950/50 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800/60"
+                            className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] px-2.5 py-1.5 text-xs glass-text hover:bg-[var(--glass-card-bg)]"
                           >
                             <input
                               type="checkbox"
-                              className="h-4 w-4 rounded border-white/20 bg-slate-900/60 text-blue-600 focus:ring-blue-500/50 shrink-0 cursor-pointer"
+                              className="h-4 w-4 rounded border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] text-blue-600 focus:ring-blue-500/50 shrink-0 cursor-pointer"
                               checked={checked}
                               onChange={(e) => {
                                 const cur = emailTemplatesForm[section.key].notifyRoleIds;
@@ -1091,7 +1154,7 @@ export default function SettingsPage() {
                             />
                             <span className="truncate max-w-[200px]" title={`${r.name} (${r.code})`}>
                               {r.name}
-                              <span className="text-slate-500 font-mono text-[10px] ml-1">({r.code})</span>
+                              <span className="glass-subtle-text font-mono text-[10px] ml-1">({r.code})</span>
                             </span>
                           </Label>
                         );
@@ -1102,7 +1165,7 @@ export default function SettingsPage() {
               </div>
             ))}
 
-            <div className="pt-2 border-t border-white/10 flex justify-end">
+            <div className="pt-2 border-t border-[var(--glass-card-border)] flex justify-end">
               <Button
                 type="submit"
                 disabled={disabledForm || savingTemplates}
@@ -1115,35 +1178,36 @@ export default function SettingsPage() {
         </form>
       </details>
 
-      <details className="group rounded-xl border border-white/10 p-4 sm:p-5 w-full bg-slate-900/50 backdrop-blur-sm">
+      <details className="group glass-card p-4 sm:p-5 w-full">
         <summary className="list-none flex items-center gap-2 mb-4 shrink-0 cursor-pointer">
-          <Settings size={18} className="text-slate-400 shrink-0" aria-hidden />
-          <h2 className="font-bold text-sm text-slate-200 flex-1">Default Pass สำหรับ Reset Password</h2>
-          <span className="text-xs text-slate-400 hidden sm:inline">ย่อ/ขยาย</span>
-          <ChevronDown size={16} className="text-slate-400 transition-transform group-open:rotate-180" />
+          <Settings size={18} className="glass-muted-text shrink-0" aria-hidden />
+          <h2 className="font-bold text-sm glass-text flex-1">Default Pass สำหรับ Reset Password</h2>
+          <span className="text-xs glass-muted-text hidden sm:inline">ย่อ/ขยาย</span>
+          <ChevronDown size={16} className="glass-muted-text transition-transform group-open:rotate-180" />
         </summary>
 
         <form onSubmit={handleSaveDefaultPass} className="space-y-6">
             <div className="space-y-4">
-              <p className="text-sm text-slate-400">
-                ใช้สำหรับปุ่ม <span className="text-slate-200 font-medium">Reset Pass</span> ในหน้า <span className="text-slate-200 font-medium">จัดการผู้ใช้</span>
+              <p className="text-sm glass-muted-text">
+                ใช้สำหรับปุ่ม <span className="glass-text font-medium">Reset Pass</span> ในหน้า <span className="glass-text font-medium">จัดการผู้ใช้</span>
               </p>
-              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-4">
+              <div className="glass-card p-4">
                 <p className="text-sm">
                   สถานะ:{" "}
-                  <span className="text-slate-200 font-medium">
+                  <span className="glass-text font-medium">
                     {defaultPassSet ? "ตั้งค่าแล้ว" : "ยังไม่ได้ตั้งค่า (ใช้ค่าเริ่มต้น F0rth2026@)"}
                   </span>
                 </p>
               </div>
 
               <div>
-                <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="default-pass">
+                <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="default-pass">
                   Default Pass
                 </Label>
                 <div className="relative">
                   <Input
                     id="default-pass"
+                    key={showDefaultPass ? "default-pass-text" : "default-pass-password"}
                     type={showDefaultPass ? "text" : "password"}
                     className="form-input-glass pr-12"
                     value={defaultPassForm.password}
@@ -1155,24 +1219,26 @@ export default function SettingsPage() {
                   />
                   <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => setShowDefaultPass((v) => !v)}
                     disabled={disabledForm || savingDefaultPass}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="absolute right-1.5 top-1/2 size-10 -translate-y-1/2 cursor-pointer glass-muted-text hover:bg-slate-100 hover:text-[var(--glass-text)] dark:hover:bg-white/10"
                     aria-label={showDefaultPass ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
                     aria-pressed={showDefaultPass}
                   >
-                    {showDefaultPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showDefaultPass ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
                   </Button>
                 </div>
               </div>
             </div>
 
-            <div className="pt-2 border-t border-white/10 flex justify-end gap-3">
+            <div className="pt-2 border-t border-[var(--glass-card-border)] flex justify-end gap-3">
               <Button
                 type="button"
                 onClick={() => setDefaultPassForm({ password: "F0rth2026@" })}
                 disabled={disabledForm || savingDefaultPass}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium transition-all active:scale-95 shadow-lg shadow-black/20 disabled:opacity-50 disabled:active:scale-100 cursor-pointer min-h-[44px]"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--glass-card-bg)] hover:bg-[var(--glass-nav-hover-bg)] glass-text font-medium transition-all active:scale-95 shadow-lg shadow-black/20 disabled:opacity-50 disabled:active:scale-100 cursor-pointer min-h-[44px]"
               >
                 ใส่ค่าเริ่มต้น
               </Button>
@@ -1188,22 +1254,36 @@ export default function SettingsPage() {
         </form>
       </details>
 
-      <details className="group rounded-xl border border-white/10 p-4 sm:p-5 w-full bg-slate-900/50 backdrop-blur-sm space-y-4">
+      <details className="group glass-card p-4 sm:p-5 w-full backdrop-blur-sm space-y-4">
         <summary className="list-none flex items-center gap-2 cursor-pointer">
-          <Settings size={18} className="text-slate-400 shrink-0" aria-hidden />
-          <h2 className="font-bold text-sm text-slate-200 flex-1">จัดการไฟล์ค้าง MinIO (Orphan Files)</h2>
-          <span className="text-xs text-slate-400 hidden sm:inline">ย่อ/ขยาย</span>
-          <ChevronDown size={16} className="text-slate-400 transition-transform group-open:rotate-180" />
+          <Settings size={18} className="glass-muted-text shrink-0" aria-hidden />
+          <h2 className="font-bold text-sm glass-text flex-1">จัดการไฟล์ค้าง MinIO (Orphan Files)</h2>
+          <span className="text-xs glass-muted-text hidden sm:inline">ย่อ/ขยาย</span>
+          <ChevronDown size={16} className="glass-muted-text transition-transform group-open:rotate-180" />
         </summary>
 
-        <p className="text-xs text-slate-400 leading-relaxed">
+        <Alert
+          variant="destructive"
+          className="rounded-xl border-red-300 bg-red-50 text-red-800 backdrop-blur-sm dark:border-red-500/25 dark:bg-red-950/40 dark:text-red-200"
+        >
+          <AlertTriangle
+            size={18}
+            className="shrink-0 text-red-600 dark:text-red-400"
+            aria-hidden
+          />
+          <AlertDescription className="text-sm font-semibold text-red-800 dark:text-red-200">
+            สำหรับ IT เท่านั้น
+          </AlertDescription>
+        </Alert>
+
+        <p className="text-xs glass-muted-text leading-relaxed">
           สแกนไฟล์ใน MinIO ที่ไม่ถูกอ้างอิงในฐานข้อมูล (Job.images, Job.fixImages, User.image) และมีอายุเกิน 7 วัน
           จากนั้นเลือกเฉพาะไฟล์ที่ต้องการลบเพื่อความปลอดภัย
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
           <div className="w-full sm:max-w-[300px]">
-            <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="orphan-prefix">
+            <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="orphan-prefix">
               Prefix ที่ต้องการสแกน
             </Label>
             <Input
@@ -1217,20 +1297,26 @@ export default function SettingsPage() {
             />
           </div>
           <div className="w-full sm:max-w-[180px]">
-            <Label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="older-than-days">
+            <Label className="mb-1.5 block text-sm font-medium glass-muted-text" htmlFor="older-than-days">
               แสดงอายุเกิน (วัน)
             </Label>
-            <select
-              id="older-than-days"
-              className="select-native-glass w-full"
-              value={olderThanDays}
-              onChange={(e) => setOlderThanDays(Number.parseInt(e.target.value, 10))}
-              disabled={disabledForm || scanLoading || deleteLoading}
-            >
-              {[7, 14, 30, 60, 90, 180, 365].map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
+            <GlassReactSelect
+              inputId="older-than-days"
+              options={ORPHAN_OLDER_THAN_OPTIONS}
+              value={glassSelectRequiredValue(
+                String(olderThanDays),
+                ORPHAN_OLDER_THAN_OPTIONS,
+                ORPHAN_OLDER_THAN_OPTIONS[0],
+              )}
+              onChange={(opt) => {
+                if (!opt) return;
+                setOlderThanDays(Number.parseInt(opt.value, 10));
+              }}
+              isDisabled={disabledForm || scanLoading || deleteLoading}
+              isSearchable={false}
+              isClearable={false}
+              aria-label="แสดงอายุเกิน (วัน)"
+            />
           </div>
           <Button
             type="button"
@@ -1239,7 +1325,7 @@ export default function SettingsPage() {
               void handleScanOrphans({ continuationToken: null });
             }}
             disabled={disabledForm || scanLoading || deleteLoading}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium transition-all active:scale-95 shadow-lg shadow-black/20 disabled:opacity-50 disabled:active:scale-100 cursor-pointer min-h-[44px]"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--glass-card-bg)] hover:bg-[var(--glass-nav-hover-bg)] glass-text font-medium transition-all active:scale-95 shadow-lg shadow-black/20 disabled:opacity-50 disabled:active:scale-100 cursor-pointer min-h-[44px]"
           >
             {scanLoading ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
             สแกนไฟล์ค้าง
@@ -1258,24 +1344,24 @@ export default function SettingsPage() {
         {orphanScan ? (
           <div className="space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              <div className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
-                <p className="text-slate-500">Total objects</p>
-                <p className="text-slate-200 font-semibold tabular-nums">{orphanScan.stats.totalObjects}</p>
+              <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] p-2.5">
+                <p className="glass-subtle-text">Total objects</p>
+                <p className="glass-text font-semibold tabular-nums">{orphanScan.stats.totalObjects}</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
-                <p className="text-slate-500">Referenced</p>
-                <p className="text-slate-200 font-semibold tabular-nums">{orphanScan.stats.referencedObjects}</p>
+              <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] p-2.5">
+                <p className="glass-subtle-text">Referenced</p>
+                <p className="glass-text font-semibold tabular-nums">{orphanScan.stats.referencedObjects}</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
-                <p className="text-slate-500">Orphan candidates</p>
-                <p className="text-amber-300 font-semibold tabular-nums">{orphanScan.stats.orphanCandidates}</p>
+              <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] p-2.5">
+                <p className="glass-subtle-text">Orphan candidates</p>
+                <p className="text-amber-700 font-semibold tabular-nums dark:text-amber-300">{orphanScan.stats.orphanCandidates}</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-slate-950/40 p-2.5">
-                <p className="text-slate-500">Skipped by retention</p>
-                <p className="text-slate-200 font-semibold tabular-nums">{orphanScan.stats.skippedByRetention}</p>
+              <div className="rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] p-2.5">
+                <p className="glass-subtle-text">Skipped by retention</p>
+                <p className="glass-text font-semibold tabular-nums">{orphanScan.stats.skippedByRetention}</p>
               </div>
             </div>
-            <div className="flex items-center justify-between text-xs text-slate-400 rounded-lg border border-white/10 bg-slate-950/35 px-3 py-2">
+            <div className="flex items-center justify-between text-xs glass-muted-text rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] px-3 py-2">
               <span>
                 หน้า {orphanTokenHistory.length + 1}
                 {orphanScan.meta.hasMore ? " (มีหน้าถัดไป)" : ""}
@@ -1285,7 +1371,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={() => void handlePrevOrphanPage()}
                   disabled={scanLoading || orphanTokenHistory.length === 0}
-                  className="inline-flex items-center rounded-lg border border-white/15 px-2.5 py-1 text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center rounded-lg border border-[var(--glass-card-border)] px-2.5 py-1 glass-muted-text hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   ก่อนหน้า
                 </Button>
@@ -1293,7 +1379,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={() => void handleNextOrphanPage()}
                   disabled={scanLoading || !orphanScan.meta.nextContinuationToken}
-                  className="inline-flex items-center rounded-lg border border-white/15 px-2.5 py-1 text-slate-300 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center rounded-lg border border-[var(--glass-card-border)] px-2.5 py-1 glass-muted-text hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   ถัดไป
                 </Button>
@@ -1301,15 +1387,15 @@ export default function SettingsPage() {
             </div>
 
             {orphanScan.items.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/15 bg-slate-950/30 p-4 text-sm text-slate-400">
+              <div className="rounded-xl border border-dashed border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] p-4 text-sm glass-muted-text">
                 ไม่พบไฟล์ค้างที่เข้าเงื่อนไขลบ (อายุเกิน {orphanScan.retentionDays} วัน)
               </div>
             ) : (
-              <div className="rounded-xl border border-white/10 overflow-hidden">
-                <div className="max-h-[320px] overflow-auto bg-slate-950/35">
+              <div className="glass-card overflow-hidden">
+                <div className="max-h-[320px] overflow-auto bg-[var(--glass-card-bg)]">
                   <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-slate-900/90 backdrop-blur-sm">
-                      <tr className="text-slate-400 border-b border-white/10">
+                    <thead className="sticky top-0 bg-[var(--glass-card-bg)] backdrop-blur-sm">
+                      <tr className="glass-muted-text border-b border-[var(--glass-card-border)]">
                         <th className="px-3 py-2 text-left w-10">เลือก</th>
                         <th className="px-3 py-2 text-left">Object key</th>
                         <th className="px-3 py-2 text-left w-24">ขนาด</th>
@@ -1320,11 +1406,11 @@ export default function SettingsPage() {
                       {orphanScan.items.map((item) => {
                         const checked = selectedOrphanKeys.includes(item.key);
                         return (
-                          <tr key={item.key} className="border-b border-white/5 text-slate-300 hover:bg-white/5">
+                          <tr key={item.key} className="border-b border-[var(--glass-card-border)] glass-muted-text hover:bg-slate-100 dark:hover:bg-white/5">
                             <td className="px-3 py-2 align-top">
                               <input
                                 type="checkbox"
-                                className="h-4 w-4 rounded border-white/20 bg-slate-900/60 text-blue-600 focus:ring-blue-500/50 cursor-pointer"
+                                className="h-4 w-4 rounded border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] text-blue-600 focus:ring-blue-500/50 cursor-pointer"
                                 checked={checked}
                                 onChange={(e) => toggleOrphanKey(item.key, e.target.checked)}
                                 disabled={disabledForm || deleteLoading || scanLoading}
@@ -1342,8 +1428,8 @@ export default function SettingsPage() {
               </div>
             )}
 
-            <div className="rounded-xl border border-red-500/20 bg-red-950/20 p-3 space-y-2">
-              <Label className="mb-1.5 block text-xs font-medium text-red-200" htmlFor="confirm-delete-orphans">
+            <div className="rounded-xl border border-red-300 bg-red-50 p-3 space-y-2 dark:border-red-500/20 dark:bg-red-950/20">
+              <Label className="mb-1.5 block text-xs font-medium text-red-800 dark:text-red-200" htmlFor="confirm-delete-orphans">
                 ยืนยันการลบ (พิมพ์ DELETE)
               </Label>
               <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -1378,13 +1464,13 @@ export default function SettingsPage() {
       </details>
 
       <div
-        className="rounded-xl border border-white/10 p-4 sm:p-5 text-sm text-slate-400 flex gap-3 items-start bg-slate-900/50 backdrop-blur-sm"
+        className="glass-card p-4 sm:p-5 text-sm glass-muted-text flex gap-3 items-start bg-[var(--glass-card-bg)] backdrop-blur-sm"
         role="note"
       >
-        <Info size={18} className="text-slate-400 shrink-0 mt-0.5" aria-hidden />
+        <Info size={18} className="glass-muted-text shrink-0 mt-0.5" aria-hidden />
         <p className="leading-relaxed">
-          <span className="font-medium text-slate-300">ที่เก็บไฟล์ (MinIO / S3)</span> ตั้งค่าผ่านตัวแปรสภาพแวดล้อม (เช่น{" "}
-          <code className="text-slate-300 font-mono text-xs">.env</code>) — ไม่เปิดฟอร์มแก้ไขในหน้านี้
+          <span className="font-medium glass-muted-text">ที่เก็บไฟล์ (MinIO / S3)</span> ตั้งค่าผ่านตัวแปรสภาพแวดล้อม (เช่น{" "}
+          <code className="glass-muted-text font-mono text-xs">.env</code>) — ไม่เปิดฟอร์มแก้ไขในหน้านี้
         </p>
       </div>
     </div>

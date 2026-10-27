@@ -26,7 +26,18 @@ import CrudModal from "@/components/CrudModal";
 import RoleBadge from "@/components/RoleBadge";
 import { toastSuccess, toastError, toastWarning, confirmDialog } from "@/lib/toast";
 import DataTablePagination, { DataTablePageSize } from "@/components/DataTablePagination";
+import DataTablePageSizeSelect from "@/components/dashboard/DataTablePageSizeSelect";
+import GlassReactSelect, {
+  glassSelectRequiredValue,
+  glassSelectValue,
+  type GlassSelectOption,
+} from "@/components/dashboard/GlassReactSelect";
 import { buildRoleBadgeStyleMap, type RoleBadgeStyleMap } from "@/lib/roleBadge";
+import {
+  mergeUserRoleOptions,
+  resolveUserManagementAccess,
+  usersManagementSubtitle,
+} from "@/lib/userManagementAccess";
 
 interface UserRow {
   id: number;
@@ -75,12 +86,10 @@ const ROLE_OPTIONS = [
 
 const DEFAULT_PASS_SENTINEL = "__DEFAULT_PASS__";
 
-const PAGE_SIZE_OPTIONS = [
-  { value: 15, label: "15" },
-  { value: 30, label: "30" },
-  { value: 45, label: "45" },
-  { value: "all", label: "ทั้งหมด" },
-] as const;
+const LOCK_FILTER_OPTIONS: GlassSelectOption[] = [
+  { value: "unlocked", label: "เข้าใช้ได้" },
+  { value: "locked", label: "ล็อกแล้ว" },
+];
 
 /** รูปโปรไฟล์เท่านั้น — ชี้ชื่อ/username ใน tooltip (Dark Glass) — คลิกเปิดดูรูปใหญ่ได้ */
 function UserAvatarCell({
@@ -101,7 +110,7 @@ function UserAvatarCell({
   const imgAlt = tooltip ? `รูปโปรไฟล์ ${tooltip}` : `รูปโปรไฟล์ ${u.username}`;
 
   const frameClass =
-    "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-800/60 ring-1 ring-white/5";
+    "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] ring-1 ring-white/5";
 
   return (
     <div className="flex justify-center" title={tooltip || u.username}>
@@ -130,7 +139,7 @@ function UserAvatarCell({
           imageClassName="h-full w-full object-cover"
           onError={() => setImgError(true)}
           fallback={
-            <div className="flex h-full w-full items-center justify-center bg-slate-800/80 text-xs font-semibold text-slate-400">
+            <div className="flex h-full w-full items-center justify-center bg-[var(--glass-card-bg)] text-xs font-semibold glass-muted-text">
               {initial}
             </div>
           }
@@ -170,11 +179,11 @@ function generateRandomPassword(length = 12) {
   return out;
 }
 
-/** Dark Glass — ช่องกรอกใน modal (ไม่ใช้ .form-input เพื่อไม่ให้พื้นขาว) */
+/** Glass — ช่องกรอกใน modal */
 const MODAL_GLASS_FIELD =
-  "w-full rounded-xl border border-white/10 bg-slate-900/40 backdrop-blur-sm px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 shadow-inner outline-none transition-all min-h-[44px] focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/50 [color-scheme:dark]";
+  "form-input-glass w-full text-sm shadow-inner transition-all min-h-[44px]";
 const MODAL_GLASS_FIELD_DISABLED =
-  "w-full rounded-xl border border-white/10 bg-slate-900/25 px-4 py-2.5 text-sm text-slate-500 cursor-not-allowed min-h-[44px] shadow-inner opacity-90 [color-scheme:dark]";
+  "form-input-glass w-full text-sm cursor-not-allowed min-h-[44px] shadow-inner opacity-60";
 
 export default function UsersPage() {
   const [list, setList] = useState<UserRow[]>([]);
@@ -192,13 +201,18 @@ export default function UsersPage() {
   const [pageTab, setPageTab] = useState<"list" | "role">("list");
   const [pageSize, setPageSize] = useState<DataTablePageSize>(15);
   const [page, setPage] = useState(1);
-  const { data: session } = useSession();
-  const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api";
+  const { data: session, status } = useSession();
+  const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4100/api";
   const token = (session as { accessToken?: string })?.accessToken;
   const userRole = (session?.user as { role?: string })?.role ?? "STAFF";
   const sessionUserId = Number((session?.user as { id?: string })?.id);
-  const isAdmin = userRole === "ADMIN";
-  const [roles, setRoles] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [permissions, setPermissions] = useState<string[] | null>(null);
+  const userMgmtAccess = resolveUserManagementAccess({ permissions, userRole });
+  const canManageUsers = userMgmtAccess.canManage;
+  const usersSubtitle = usersManagementSubtitle(userMgmtAccess);
+  const [roleCatalog, setRoleCatalog] = useState<Array<{ code: string; name?: string | null }>>(
+    [],
+  );
   const [rolesLoading, setRolesLoading] = useState(false);
   const [roleStyleMap, setRoleStyleMap] = useState<RoleBadgeStyleMap>({});
   const [showEditPassword, setShowEditPassword] = useState(false);
@@ -210,61 +224,64 @@ export default function UsersPage() {
     null,
   );
 
-  const fetchRoles = () => {
-    if (!token || !isAdmin) return;
-    setRolesLoading(true);
-    axios
-      .get<Array<{ id: number; code: string; name: string }>>(`${API}/roles`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then((r) => {
-        const payload = unwrapApiData<unknown>(r?.data);
-        setRoles(Array.isArray(payload) ? (payload as Array<{ id: number; code: string; name: string }>) : []);
-      })
-      .catch(() => setRoles([]))
-      .finally(() => setRolesLoading(false));
-  };
-
   const fetchRoleStyles = () => {
     if (!token) return;
+    setRolesLoading(true);
     axios
-      .get<Array<{ code: string; badgeTextColor?: string | null; badgeBgColor?: string | null }>>(
+      .get<Array<{ code: string; name?: string | null; badgeTextColor?: string | null; badgeBgColor?: string | null }>>(
         `${API}/roles/public-styles`,
         { headers: { Authorization: `Bearer ${token}` } },
       )
       .then((r) => {
         const payload = unwrapApiData<unknown>(r?.data);
-        setRoleStyleMap(
-          buildRoleBadgeStyleMap(
-            Array.isArray(payload)
-              ? (payload as Array<{ code: string; badgeTextColor?: string | null; badgeBgColor?: string | null }>)
-              : [],
-          ),
-        );
+        const rows = Array.isArray(payload)
+          ? (payload as Array<{
+              code: string;
+              name?: string | null;
+              badgeTextColor?: string | null;
+              badgeBgColor?: string | null;
+            }>)
+          : [];
+        setRoleCatalog(rows);
+        setRoleStyleMap(buildRoleBadgeStyleMap(rows));
       })
-      .catch(() => setRoleStyleMap({}));
+      .catch(() => {
+        setRoleCatalog([]);
+        setRoleStyleMap({});
+      })
+      .finally(() => setRolesLoading(false));
   };
 
   useEffect(() => {
-    fetchRoles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, isAdmin]);
+    if (!token || status !== "authenticated") {
+      setPermissions(null);
+      return;
+    }
+    fetch(`${API}/roles/me/permissions`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((raw) => {
+        const payload = unwrapApiData<{ permissions?: string[] }>(raw);
+        const list = payload?.permissions;
+        setPermissions(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setPermissions([]));
+  }, [token, status, API]);
 
   useEffect(() => {
     fetchRoleStyles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const allRoleOptions = useMemo(() => {
-    const map = new Map<string, { value: string; label: string }>();
-    for (const o of ROLE_OPTIONS) map.set(o.value, o);
-    for (const r of roles) {
-      const code = String(r.code || "").toUpperCase().trim();
-      if (!code) continue;
-      map.set(code, { value: code, label: r.name?.trim() ? r.name : code });
-    }
-    return [...map.values()];
-  }, [roles]);
+  const allRoleOptions = useMemo(
+    () => mergeUserRoleOptions(ROLE_OPTIONS, roleCatalog),
+    [roleCatalog],
+  );
+
+  const roleSelectOptions = useMemo(
+    (): GlassSelectOption[] =>
+      allRoleOptions.map((o) => ({ value: o.value, label: o.label })),
+    [allRoleOptions],
+  );
 
   const roleLabelByCode = useMemo(() => {
     return allRoleOptions.reduce<Record<string, string>>((acc, o) => {
@@ -275,7 +292,7 @@ export default function UsersPage() {
 
   const getRoleSummaryText = (code: string) => {
     const c = code.toUpperCase().trim();
-    if (c === "ADMIN") return "เข้าถึงทุกเมนู รวม จัดการผู้ใช้ และ ตั้งค่าระบบ · CRUD ผู้ใช้ได้ทั้งหมด";
+    if (c === "ADMIN") return "เทียบเท่าเจ้าหน้าที่ แต่สามารถมอบหมายงานให้เจ้าหน้าที่ได้";
     if (c === "STAFF") return "ภาพรวม, รอดำเนินการ, กำลังแก้ไข, ประวัติทั้งหมด, นอกสัญญา · ไม่มีเมนู จัดการผู้ใช้ และ ตั้งค่าระบบ";
     if (c === "USER") return "เฉพาะ โปรไฟล์, แจ้งปัญหา, ตรวจสอบสถานะ";
     return "สิทธิ์ตามที่กำหนดไว้ในหน้าบทบาทและสิทธิ์ (RBAC)";
@@ -568,7 +585,7 @@ export default function UsersPage() {
     return (
       <DashboardPageShell
         title="จัดการผู้ใช้และบทบาท"
-        subtitle={isAdmin ? "เพิ่ม/แก้ไข/ลบผู้ใช้ และกำหนด Role (ADMIN, STAFF, USER)" : "รายชื่อผู้ใช้และบทบาท (ดูอย่างเดียว)"}
+        subtitle={usersSubtitle}
         noCard={true}
       >
         <DashboardRouteLoading variant="page" />
@@ -579,20 +596,20 @@ export default function UsersPage() {
   return (
     <DashboardPageShell
       title="จัดการผู้ใช้และบทบาท"
-      subtitle={isAdmin ? "เพิ่ม/แก้ไข/ลบผู้ใช้ และกำหนด Role (ADMIN, STAFF, USER)" : "รายชื่อผู้ใช้และบทบาท (ดูอย่างเดียว)"}
+      subtitle={usersSubtitle}
       noCard={true}
     >
       <div className="flex flex-col space-y-6 flex-1 min-h-0">
         {/* แท็บระดับหน้า: รายชื่อผู้ใช้ | บทบาท (Role) */}
         <div className="flex shrink-0">
-          <div className="p-1 rounded-xl bg-slate-800/40 border border-white/5 backdrop-blur-sm flex gap-1">
+          <div className="p-1 rounded-xl bg-[var(--glass-card-bg)] border border-[var(--glass-card-border)] backdrop-blur-sm flex gap-1">
             <button
               type="button"
               onClick={() => setPageTab("list")}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 pageTab === "list"
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-slate-400 hover:text-slate-300 hover:bg-white/5"
+                  : "glass-muted-text hover:glass-muted-text hover:bg-white/5"
               }`}
             >
               <UserCog size={16} /> รายชื่อผู้ใช้
@@ -603,7 +620,7 @@ export default function UsersPage() {
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 pageTab === "role"
                   ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-slate-400 hover:text-slate-300 hover:bg-white/5"
+                  : "glass-muted-text hover:glass-muted-text hover:bg-white/5"
               }`}
             >
               <Shield size={16} /> บทบาท (Role)
@@ -612,29 +629,29 @@ export default function UsersPage() {
         </div>
 
         {pageTab === "role" ? (
-          <div className="flex-1 overflow-auto rounded-2xl border border-white/10 bg-slate-900/50 backdrop-blur-md shadow-2xl p-4 sm:p-6">
+          <div className="flex-1 overflow-auto glass-card p-4 sm:p-6">
           <div className="max-w-2xl space-y-4">
-            <h3 className="text-base font-bold text-white">สิทธิ์ตามบทบาท (RBAC)</h3>
-            <div className="rounded-xl border border-white/10 p-4 space-y-3 bg-slate-800/30">
+            <h3 className="text-base font-bold glass-text">สิทธิ์ตามบทบาท (RBAC)</h3>
+            <div className="rounded-xl border border-[var(--glass-card-border)] p-4 space-y-3 bg-[var(--glass-input-bg)]">
               {allRoleOptions.map((o) => (
                 <div key={o.value}>
-                  <p className="font-semibold text-sm text-slate-200">
+                  <p className="font-semibold text-sm glass-text">
                     {o.label} ({o.value})
                   </p>
-                  <p className="text-sm mt-0.5 text-slate-400">{getRoleSummaryText(o.value)}</p>
+                  <p className="text-sm mt-0.5 glass-muted-text">{getRoleSummaryText(o.value)}</p>
                 </div>
               ))}
               {rolesLoading && (
                 <div>
-                  <p className="text-sm mt-0.5 text-slate-400">กำลังโหลดบทบาทใหม่...</p>
+                  <p className="text-sm mt-0.5 glass-muted-text">กำลังโหลดบทบาทใหม่...</p>
                 </div>
               )}
             </div>
-            <div className="rounded-xl border border-white/10 p-4">
-              <p className="text-xs font-medium mb-2 text-slate-400">สรุปจำนวนผู้ใช้ตามบทบาท</p>
+            <div className="glass-card p-4">
+              <p className="text-xs font-medium mb-2 glass-muted-text">สรุปจำนวนผู้ใช้ตามบทบาท</p>
               <div className="flex flex-wrap gap-3">
                 {allRoleOptions.map((o) => (
-                  <span key={o.value} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-slate-800/50 text-slate-300 border border-white/5">
+                  <span key={o.value} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-[var(--glass-card-bg)] glass-muted-text border border-[var(--glass-card-border)]">
                     {o.label}: <strong>{list.filter((u) => u.role === o.value).length}</strong>
                   </span>
                 ))}
@@ -643,13 +660,13 @@ export default function UsersPage() {
           </div>
         </div>
         ) : (
-          <div className="flex flex-col flex-1 min-h-0 rounded-2xl border border-white/10 bg-slate-900/50 backdrop-blur-md shadow-2xl overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 glass-card overflow-hidden">
       <DashboardFilterBar
         searchPlaceholder="ค้นหา username, ชื่อ, อีเมล, เบอร์..."
         searchValue={search}
         onSearchChange={setSearch}
         onRefresh={fetchUsers}
-        rightActions={isAdmin ? (
+        rightActions={canManageUsers ? (
           <button
             type="button"
             onClick={openCreate}
@@ -660,56 +677,44 @@ export default function UsersPage() {
         ) : undefined}
       >
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <select
-            className="select-native-glass w-full sm:w-56 md:min-w-[180px]"
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-          >
-            <option value="">ทุกบทบาท</option>
-            {allRoleOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="select-native-glass w-full sm:w-44 md:min-w-[160px]"
-            value={lockFilter}
-            onChange={(e) => setLockFilter(e.target.value as "" | "locked" | "unlocked")}
+          <GlassReactSelect
+            className="w-full sm:w-56 md:min-w-[180px]"
+            options={roleSelectOptions}
+            placeholder="ทุกบทบาท"
+            value={glassSelectValue(roleFilter, roleSelectOptions)}
+            onChange={(opt) => setRoleFilter(opt?.value ?? "")}
+            aria-label="กรองตามบทบาท"
+          />
+          <GlassReactSelect
+            className="w-full sm:w-44 md:min-w-[160px]"
+            options={LOCK_FILTER_OPTIONS}
+            placeholder="ทุกสถานะการเข้าใช้"
+            value={glassSelectValue(lockFilter, LOCK_FILTER_OPTIONS)}
+            onChange={(opt) =>
+              setLockFilter((opt?.value ?? "") as "" | "locked" | "unlocked")
+            }
+            isSearchable={false}
             aria-label="กรองสถานะการเข้าใช้"
-          >
-            <option value="">ทุกสถานะการเข้าใช้</option>
-            <option value="unlocked">เข้าใช้ได้</option>
-            <option value="locked">ล็อกแล้ว</option>
-          </select>
-          <select
-            className="select-native-glass w-full sm:w-32 md:min-w-[112px]"
+          />
+          <DataTablePageSizeSelect
             value={pageSize}
-            onChange={(e) => {
-              const v = e.target.value;
-              setPageSize(v === "all" ? "all" : (Number(v) as 15 | 30 | 45));
-            }}
-          >
-            {PAGE_SIZE_OPTIONS.map((o) => (
-              <option key={String(o.value)} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            onChange={setPageSize}
+            className="w-full sm:w-32 md:min-w-[112px]"
+          />
         </div>
       </DashboardFilterBar>
 
       {error ? (
         <div className="flex-1 p-6 flex flex-col items-center justify-center text-center">
           <p className="text-sm font-medium text-red-400">{error}</p>
-          <button type="button" onClick={fetchUsers} className="mt-3 px-4 py-2 rounded-lg border border-white/10 text-sm text-slate-400 hover:bg-white/5 transition-colors">
+          <button type="button" onClick={fetchUsers} className="mt-3 px-4 py-2 rounded-lg border border-[var(--glass-card-border)] text-sm glass-muted-text hover:bg-white/5 transition-colors">
             โหลดใหม่
           </button>
         </div>
       ) : filteredList.length === 0 ? (
         <div className="flex-1 p-12 flex flex-col items-center justify-center text-center">
-          <UserCog size={48} className="opacity-40 mb-3 text-slate-600" />
-          <p className="font-semibold text-slate-400">
+          <UserCog size={48} className="opacity-40 mb-3 glass-subtle-text" />
+          <p className="font-semibold glass-muted-text">
             {list.length === 0 ? "ยังไม่มีผู้ใช้" : "ไม่พบรายการตามตัวกรอง"}
           </p>
         </div>
@@ -719,20 +724,20 @@ export default function UsersPage() {
             <table className="w-full min-w-[720px] text-left border-collapse">
               <thead>
                 <tr
-                  className="text-xs font-semibold uppercase tracking-wide sticky top-0 z-10 bg-slate-800/80 backdrop-blur-sm text-slate-400"
+                  className="text-xs font-semibold uppercase tracking-wide sticky top-0 z-10 bg-[var(--glass-card-bg)] backdrop-blur-sm glass-muted-text"
                 >
-                  <th className="w-14 px-2 py-3 border-b border-white/5 text-center whitespace-nowrap">
+                  <th className="w-14 px-2 py-3 border-b border-[var(--glass-card-border)] text-center whitespace-nowrap">
                     รูป
                   </th>
-                  <th className="px-4 py-3 border-b border-white/5 min-w-[120px]">ชื่อ-สกุล</th>
-                  <th className="px-4 py-3 border-b border-white/5 min-w-[160px]">อีเมล</th>
-                  <th className="px-4 py-3 border-b border-white/5 min-w-[140px]">เบอร์ / ตำแหน่ง</th>
-                  <th className="px-4 py-3 border-b border-white/5 whitespace-nowrap w-28">บทบาท</th>
-                  <th className="px-4 py-3 border-b border-white/5 whitespace-nowrap w-30 text-center">
+                  <th className="px-4 py-3 border-b border-[var(--glass-card-border)] min-w-[120px]">ชื่อ-สกุล</th>
+                  <th className="px-4 py-3 border-b border-[var(--glass-card-border)] min-w-[160px]">อีเมล</th>
+                  <th className="px-4 py-3 border-b border-[var(--glass-card-border)] min-w-[140px]">เบอร์ / ตำแหน่ง</th>
+                  <th className="px-4 py-3 border-b border-[var(--glass-card-border)] whitespace-nowrap w-28">บทบาท</th>
+                  <th className="px-4 py-3 border-b border-[var(--glass-card-border)] whitespace-nowrap w-30 text-center">
                     เข้าใช้
                   </th>
-                  {isAdmin && (
-                    <th className="px-4 py-3 border-b border-white/5 text-right whitespace-nowrap w-24">จัดการ</th>
+                  {canManageUsers && (
+                    <th className="px-4 py-3 border-b border-[var(--glass-card-border)] text-right whitespace-nowrap w-24">จัดการ</th>
                   )}
                 </tr>
               </thead>
@@ -740,7 +745,7 @@ export default function UsersPage() {
                 {paginatedList.map((u) => (
                   <tr
                     key={u.id}
-                    className="hover:bg-white/5 transition-colors text-sm border-b border-white/5"
+                    className="hover:bg-white/5 transition-colors text-sm border-b border-[var(--glass-card-border)]"
                   >
                     <td className="w-14 px-2 py-3 align-middle">
                       <UserAvatarCell
@@ -748,13 +753,13 @@ export default function UsersPage() {
                         onPreview={(src, alt) => setAvatarLightbox({ src, alt })}
                       />
                     </td>
-                    <td className="px-4 py-3 truncate min-w-0 text-slate-300 max-w-[220px]">
+                    <td className="px-4 py-3 truncate min-w-0 glass-muted-text max-w-[220px]">
                       {u.name || "–"}
                     </td>
-                    <td className="px-4 py-3 truncate min-w-0 text-xs text-slate-400 max-w-[min(100%,280px)]">
+                    <td className="px-4 py-3 truncate min-w-0 text-xs glass-muted-text max-w-[min(100%,280px)]">
                       {u.email || "–"}
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-400">
+                    <td className="px-4 py-3 text-xs glass-muted-text">
                       {u.phone || "–"}
                       {u.position && <span className="mt-0.5 flex items-center gap-1"><Briefcase size={10} /> {u.position}</span>}
                     </td>
@@ -769,30 +774,30 @@ export default function UsersPage() {
                     <td className="px-4 py-3 text-center align-middle">
                       {u.isLocked ? (
                         <span
-                          className="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium bg-red-950/35 text-red-200 border border-red-500/25"
+                          className="inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium bg-red-50 text-red-800 border border-red-300 dark:bg-red-950/35 dark:text-red-200 dark:border-red-500/25"
                           title="ล็อกการเข้าสู่ระบบ"
                         >
                           <Lock size={12} className="shrink-0" aria-hidden />
                           ล็อก
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-500">ปกติ</span>
+                        <span className="text-xs glass-subtle-text">ปกติ</span>
                       )}
                     </td>
-                    {isAdmin && (
+                    {canManageUsers && (
                       <td className="px-4 py-3 text-right">
                         {!isSoleAdmin(u) && (
                           <button
                             type="button"
                             onClick={() => void handleResetPassword(u.id, u.username)}
                             disabled={resettingUserId === u.id}
-                            className="p-2 rounded-lg hover:bg-white/10 inline-flex text-slate-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 inline-flex glass-muted-text hover:text-[var(--glass-text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="รีเซ็ตรหัสผ่านเป็น Default Pass"
                           >
                             <KeyRound size={14} />
                           </button>
                         )}
-                        <button type="button" onClick={() => openEdit(u)} className="p-2 rounded-lg hover:bg-white/10 inline-flex text-slate-400 hover:text-white transition-colors" title="แก้ไข">
+                        <button type="button" onClick={() => openEdit(u)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 inline-flex glass-muted-text hover:text-[var(--glass-text)] transition-colors" title="แก้ไข">
                           <Pencil size={14} />
                         </button>
                         {!isSoleAdmin(u) && (
@@ -836,18 +841,18 @@ export default function UsersPage() {
         onSubmit={handleSubmit}
       >
         {/* แท็บ: ข้อมูลบัญชี | บทบาท — Dark Glass */}
-        <div className="flex gap-1 p-1 rounded-xl border border-white/10 bg-slate-900/40 backdrop-blur-sm mb-4">
+        <div className="flex gap-1 p-1 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] backdrop-blur-sm mb-4">
           <button
             type="button"
             onClick={() => setModalTab("account")}
-            className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${modalTab === "account" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-inner" : "text-slate-400 hover:text-slate-200 hover:bg-white/5"}`}
+            className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${modalTab === "account" ? "bg-blue-100 text-blue-800 border border-blue-300 shadow-inner dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30" : "glass-muted-text hover:glass-text hover:bg-slate-100 dark:hover:bg-white/5"}`}
           >
             <User size={14} aria-hidden /> ข้อมูลบัญชี
           </button>
           <button
             type="button"
             onClick={() => setModalTab("role")}
-            className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${modalTab === "role" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30 shadow-inner" : "text-slate-400 hover:text-slate-200 hover:bg-white/5"}`}
+            className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium rounded-lg transition-all ${modalTab === "role" ? "bg-blue-100 text-blue-800 border border-blue-300 shadow-inner dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30" : "glass-muted-text hover:glass-text hover:bg-slate-100 dark:hover:bg-white/5"}`}
           >
             <Shield size={14} aria-hidden /> บทบาท (Role)
           </button>
@@ -855,17 +860,17 @@ export default function UsersPage() {
 
         {modalTab === "account" && (
           <>
-            <div className="rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-sm p-4 flex items-center gap-4 mb-1">
+            <div className="glass-card backdrop-blur-sm p-4 flex items-center gap-4 mb-1">
               {avatarPreview ? (
                 <ManagedImageFrame
                   src={avatarPreview}
                   alt=""
                   sizes={MANAGED_IMAGE_SIZES.avatarLg}
-                  frameClassName="w-14 h-14 rounded-2xl border border-white/15 ring-2 ring-white/5 shrink-0"
+                  frameClassName="w-14 h-14 rounded-2xl border border-[var(--glass-card-border)] ring-2 ring-white/5 shrink-0"
                   imageClassName="object-cover"
                 />
               ) : (
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-base font-semibold text-slate-300 bg-slate-800/80 border border-white/10 shrink-0">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-base font-semibold glass-muted-text bg-[var(--glass-card-bg)] border border-[var(--glass-card-border)] shrink-0">
                   {(form.name || form.email || form.username || "U")[0]?.toUpperCase()}
                 </div>
               )}
@@ -888,17 +893,17 @@ export default function UsersPage() {
                         };
                         input.click();
                       }}
-                      className="w-fit px-3 py-2 rounded-xl border border-white/15 bg-slate-800/50 backdrop-blur-sm text-xs font-medium text-slate-200 hover:bg-slate-700/55 hover:border-white/25 transition-all active:scale-95 cursor-pointer"
+                      className="w-fit px-3 py-2 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] backdrop-blur-sm text-xs font-medium glass-text hover:bg-[var(--glass-nav-hover-bg)] hover:border-blue-500/25 transition-all active:scale-95 cursor-pointer"
                     >
                       {avatarPreview ? "เปลี่ยนรูปโปรไฟล์" : "อัปโหลดรูปโปรไฟล์"}
                     </button>
-                    <span className="text-[11px] text-slate-500 leading-snug">
+                    <span className="text-[11px] glass-subtle-text leading-snug">
                       รองรับ JPG, PNG ขนาดไม่เกิน ~2MB
                     </span>
                   </>
                 ) : (
                   <div
-                    className="w-fit px-3 py-2 rounded-xl border border-white/15 bg-slate-800/40 text-xs font-medium text-slate-300 flex items-center gap-2"
+                    className="w-fit px-3 py-2 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] text-xs font-medium glass-muted-text flex items-center gap-2"
                     aria-label="ใช้รูปโปรไฟล์เดิม"
                   >
                     <User size={14} aria-hidden />
@@ -910,7 +915,7 @@ export default function UsersPage() {
             {modalMode === "create" && (
               <>
                 <div>
-                  <label className="block text-sm font-medium mb-1 text-slate-300">อีเมล <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-medium mb-1 glass-muted-text">อีเมล <span className="text-red-400">*</span></label>
                   <input
                     type="email"
                     required
@@ -921,7 +926,7 @@ export default function UsersPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1 text-slate-300">รหัสผ่าน <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-medium mb-1 glass-muted-text">รหัสผ่าน <span className="text-red-400">*</span></label>
                   <div className="relative">
                     <input
                       type="password"
@@ -935,14 +940,14 @@ export default function UsersPage() {
                       <button
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, password: DEFAULT_PASS_SENTINEL }))}
-                        className="h-10 px-3 rounded-lg border border-white/10 bg-slate-800/40 text-xs text-slate-300 hover:bg-slate-700/50 transition-colors cursor-pointer"
+                        className="h-10 px-3 rounded-lg border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] text-xs glass-muted-text hover:bg-[var(--glass-nav-hover-bg)] transition-colors cursor-pointer"
                       >
                         ค่าเริ่มต้น
                       </button>
                       <button
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, password: generateRandomPassword(12) }))}
-                        className="h-10 px-3 rounded-lg border border-white/10 bg-blue-600/20 text-xs text-blue-200 hover:bg-blue-600/30 transition-colors cursor-pointer"
+                        className="h-10 px-3 rounded-lg border border-blue-300 bg-blue-50 text-xs text-blue-800 hover:bg-blue-100 transition-colors cursor-pointer dark:border-[var(--glass-card-border)] dark:bg-blue-600/20 dark:text-blue-200 dark:hover:bg-blue-600/30"
                       >
                         สุ่ม
                       </button>
@@ -954,7 +959,7 @@ export default function UsersPage() {
             {modalMode === "edit" && (
               <>
                 <div>
-                  <label className="block text-sm font-medium mb-1 text-slate-300">เปลี่ยนรหัสผ่าน (ถ้าต้องการ)</label>
+                  <label className="block text-sm font-medium mb-1 glass-muted-text">เปลี่ยนรหัสผ่าน (ถ้าต้องการ)</label>
                   <div className="relative">
                     <input
                       type={showEditPassword ? "text" : "password"}
@@ -966,7 +971,7 @@ export default function UsersPage() {
                     <button
                       type="button"
                       onClick={() => setShowEditPassword((v) => !v)}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg glass-muted-text hover:text-[var(--glass-text)] hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
                       aria-label={showEditPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
                       aria-pressed={showEditPassword}
                     >
@@ -975,13 +980,13 @@ export default function UsersPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1 text-slate-300">Username / อีเมล</label>
+                  <label className="block text-sm font-medium mb-1 glass-muted-text">Username / อีเมล</label>
                   <input type="text" className={MODAL_GLASS_FIELD_DISABLED} value={form.username} disabled readOnly />
                 </div>
               </>
             )}
             <div>
-              <label className="block text-sm font-medium mb-1 text-slate-300">ชื่อ-สกุล</label>
+              <label className="block text-sm font-medium mb-1 glass-muted-text">ชื่อ-สกุล</label>
               <input
                 type="text"
                 className={MODAL_GLASS_FIELD}
@@ -993,7 +998,7 @@ export default function UsersPage() {
             </div>
             {modalMode === "edit" && (
               <div>
-                <label className="block text-sm font-medium mb-1 text-slate-300">อีเมล</label>
+                <label className="block text-sm font-medium mb-1 glass-muted-text">อีเมล</label>
                 <input
                   type="email"
                   className={MODAL_GLASS_FIELD}
@@ -1004,7 +1009,7 @@ export default function UsersPage() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium mb-1 text-slate-300">เบอร์โทร</label>
+              <label className="block text-sm font-medium mb-1 glass-muted-text">เบอร์โทร</label>
               <input
                 type="text"
                 className={MODAL_GLASS_FIELD}
@@ -1020,7 +1025,7 @@ export default function UsersPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-slate-300">ตำแหน่ง</label>
+              <label className="block text-sm font-medium mb-1 glass-muted-text">ตำแหน่ง</label>
               <input
                 type="text"
                 className={MODAL_GLASS_FIELD}
@@ -1029,21 +1034,21 @@ export default function UsersPage() {
                 placeholder="ตำแหน่งงาน"
               />
             </div>
-            {modalMode === "edit" && isAdmin && (
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-900/30 p-4">
+            {modalMode === "edit" && canManageUsers && (
+              <div className="flex items-start gap-3 rounded-xl border border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] p-4">
                 <input
                   type="checkbox"
                   id="user-is-locked"
                   checked={form.isLocked}
                   disabled={saving || isEditingSelf}
                   onChange={(e) => setForm({ ...form, isLocked: e.target.checked })}
-                  className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900/50 text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--glass-card-border)] bg-[var(--glass-card-bg)] text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <div className="min-w-0">
-                  <label htmlFor="user-is-locked" className="text-sm font-medium text-slate-200 cursor-pointer">
+                  <label htmlFor="user-is-locked" className="text-sm font-medium glass-text cursor-pointer">
                     ล็อกการเข้าสู่ระบบ
                   </label>
-                  <p className="text-xs text-slate-500 mt-1 leading-snug">
+                  <p className="text-xs glass-subtle-text mt-1 leading-snug">
                     ผู้ใช้จะไม่สามารถเข้าสู่ระบบหรือเรียก API ได้จนกว่าจะปลดล็อก
                   </p>
                   {isEditingSelf && (
@@ -1058,24 +1063,36 @@ export default function UsersPage() {
         {modalTab === "role" && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1 text-slate-300">บทบาท (Role)</label>
-              <select className="select-native-glass w-full" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {allRoleOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium mb-1 glass-muted-text" htmlFor="user-form-role">
+                บทบาท (Role)
+              </label>
+              <GlassReactSelect
+                inputId="user-form-role"
+                options={roleSelectOptions}
+                value={glassSelectRequiredValue(
+                  form.role,
+                  roleSelectOptions,
+                  roleSelectOptions[0] ?? { value: form.role, label: form.role },
+                )}
+                onChange={(opt) => {
+                  if (!opt) return;
+                  setForm({ ...form, role: opt.value });
+                }}
+                isClearable={false}
+                aria-label="บทบาทผู้ใช้"
+              />
             </div>
-            <div className="rounded-2xl p-4 text-xs space-y-2 bg-slate-900/40 backdrop-blur-sm border border-white/10 text-slate-400 shadow-inner">
-              <p className="font-semibold text-slate-300">สิทธิ์ตามบทบาท (RBAC)</p>
+            <div className="rounded-2xl p-4 text-xs space-y-2 bg-[var(--glass-card-bg)] backdrop-blur-sm border border-[var(--glass-card-border)] glass-muted-text shadow-inner">
+              <p className="font-semibold glass-muted-text">สิทธิ์ตามบทบาท (RBAC)</p>
               <div className="flex items-center gap-2">
                 <RoleBadge
                   roleCode={form.role}
                   label={roleLabelByCode[form.role] || form.role}
                   styleMap={roleStyleMap}
                 />
-                <p className="text-slate-300">{getRoleSummaryText(form.role)}</p>
+                <p className="glass-muted-text">{getRoleSummaryText(form.role)}</p>
               </div>
-              <p className="text-slate-400/90">รายละเอียดสิทธิ์แต่ละเมนูดูได้ที่หน้าจัดการบทบาทและสิทธิ์</p>
+              <p className="glass-subtle-text">รายละเอียดสิทธิ์แต่ละเมนูดูได้ที่หน้าจัดการบทบาทและสิทธิ์</p>
             </div>
           </div>
         )}
@@ -1088,31 +1105,31 @@ export default function UsersPage() {
           role="presentation"
         >
           <div
-            className="relative w-full max-w-[min(100%,20rem)] rounded-2xl border border-white/10 bg-slate-900/60 backdrop-blur-md shadow-2xl overflow-hidden flex flex-col"
+            className="relative w-full max-w-[min(100%,20rem)] glass-card backdrop-blur-md shadow-2xl overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label={avatarLightbox.alt}
           >
-            <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 border-b border-white/10 shrink-0">
-              <p className="text-xs sm:text-sm font-medium text-slate-200 truncate min-w-0 pr-2">
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 border-b border-[var(--glass-card-border)] shrink-0">
+              <p className="text-xs sm:text-sm font-medium glass-text truncate min-w-0 pr-2">
                 {avatarLightbox.alt}
               </p>
               <button
                 type="button"
                 onClick={() => setAvatarLightbox(null)}
-                className="shrink-0 p-2 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
+                className="shrink-0 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 glass-muted-text hover:text-[var(--glass-text)] transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="ปิด"
               >
                 <X size={20} />
               </button>
             </div>
-            <div className="flex items-center justify-center bg-slate-950/90 p-4 sm:p-5">
+            <div className="flex items-center justify-center bg-[var(--glass-card-bg)] p-4 sm:p-5">
               <ManagedImageFrame
                 src={avatarLightbox.src}
                 alt={avatarLightbox.alt}
                 sizes={MANAGED_IMAGE_SIZES.lightboxSquare}
-                frameClassName="w-full max-w-[240px] aspect-square flex items-center justify-center rounded-xl bg-slate-900/50 ring-1 ring-white/10"
+                frameClassName="w-full max-w-[240px] aspect-square flex items-center justify-center rounded-xl bg-[var(--glass-card-bg)] ring-1 ring-white/10"
                 imageClassName="object-contain"
               />
             </div>

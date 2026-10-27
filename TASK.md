@@ -1,6 +1,6 @@
 # Task & Implementation Plan 
 
-รายการงานสำหรับการย้ายระบบแจ้งซ่อม CCTV จาก AppSheet มาสู่ Next.js และ NestJS
+รายการงานสำหรับการย้ายระบบแจ้งซ่อม จาก AppSheet มาสู่ Next.js และ NestJS
 
 ## 1. Project Setup
 - [x] Initialize NestJS backend in `backend/` directory.
@@ -10,7 +10,7 @@
 ## 2. Database & Backend Preparation
 - [x] Setup Prisma ORM and MySQL connection in `backend/`.
 - [x] Define Prisma Schema based on AppSheet data structure (Jobs, Users, Settings).
-- [x] Create data migration script to read `ระบบแจ้งซ่อม CCTV .xlsx` and populate MySQL database.
+- [x] Create data migration script to read `ระบบแจ้งซ่อม .xlsx` and populate MySQL database.
 - [x] Generate Prisma client and create initial migrations.
 
 ## 3. Backend Implementation (NestJS)
@@ -32,7 +32,7 @@
 - [x] Polish UI with SweetAlert2.
 
 ## 6. Phase 2 - Schema Alignment with Excel (2026-03-08)
-- [x] ตรวจสอบโครงสร้าง Excel (`ระบบแจ้งซ่อม CCTV .xlsx`) ทุกชีท
+- [x] ตรวจสอบโครงสร้าง Excel (`ระบบแจ้งซ่อม .xlsx`) ทุกชีท
 - [x] เพิ่มตาราง `Site` (พื้นที่ในโครงการ: จังหวัด, อำเภอ, หน่วยงาน)
 - [x] เพิ่มตาราง `Area` (พื้นที่รับผิดชอบ: อำเภอ, Site Engineer)
 - [x] ขยายตาราง `User` — เพิ่ม `position`, `image`, relation `areas`, `reportedJobs`
@@ -49,6 +49,7 @@
 - [x] อัปเดตฟอร์มแจ้งซ่อม (`/report`) เรียงการ์ด: แบบฟอร์มจำกัดเบอร์โทรเฉพาะตัวเลข 10 หลัก และฟิลด์ค้นหาสถานที่เป็น Select2 (`react-select`)
 - [x] เพิ่มระบบค้นหาประวัติผู้แจ้งจากเบอร์โทร และล็อคข้อมูลชื่อ-อีเมลเมื่อพบในระบบ (Read-only)
 - [x] เขียน Seed Script (`seed-from-excel.ts`, `seed-from-csv.ts`, `seed-admin.ts`)
+- [x] Seed Locations master จาก MS SQL dump (`seed-locations-from-mssql.ts` + `scripts/data/TB_MST_*.sql`) — คู่มือ `docs/Locations-Master-Seed.md` (2026-08-14)
 - [x] ตรวจสอบความถูกต้องของข้อมูลพื้นที่โครงการ (Sites) อ้างอิงตาม Excel/CSV
 - [x] Login ด้วยอีเมลหรือชื่อผู้ใช้ + password toggle
 - [x] User dropdown ใน header (โปรไฟล์, ออกจากระบบ); หน้าโปรไฟล์ แก้ไขข้อมูล/เปลี่ยนรหัสผ่าน
@@ -59,11 +60,11 @@
 - [x] บทบาท SUPERVISOR (หัวหน้างาน) + สิทธิ์ job.assign; ปุ่มมอบหมายงานในหน้ารอดำเนินการ (modal เลือกเจ้าหน้าที่); GET /users/assignable, PATCH /jobs/:id/assign — **อัปเดต 2026-03-30:** API/UI อิง RBAC (`job.assign`, `menu.pending` สำหรับรับงานเอง) สอดคล้อง `/dashboard/roles`
 - [x] หน้ารอดำเนินการ: ปุ่มดูรายละเอียด → ไปหน้า `/dashboard/jobs/:id` (full page); ปุ่มมอบหมายงานใช้ react-select
 - [x] นอกสัญญา (คงสถานะ PENDING) + ย้ายนอกสัญญา
-  - `/dashboard/out-of-contract` แสดงเฉพาะงาน `PENDING` ที่ `isOutOfContract=true` (โครงสร้างเหมือน `/dashboard/pending`)
-  - ปุ่ม "ย้ายนอกสัญญา" บนหน้ารอดำเนินการ — **อัปเดต 2026-03-30:** แสดงและเรียก API ได้เมื่อมีสิทธิ์ **`job.assign`** (เดิมเทียบเท่า ADMIN/SUPERVISOR); คงสถานะ `PENDING`
-  - Backend มี endpoint `PATCH /jobs/:id/out-of-contract` เพื่อย้ายนอกสัญญา
+  - `/dashboard/out-of-contract` แสดง `PENDING` OOC + `RESOLVED` OOC ที่จำแนกเอกสารแล้ว (โครงสร้างรายการเหมือนคิวงานอื่น)
+  - ปุ่ม "ย้ายนอกสัญญา" — **ไม่อยู่บน `/dashboard/pending` แล้ว** (2026-08-14); API `PATCH /jobs/:id/out-of-contract` ยังมีเมื่อมีสิทธิ์ **`job.assign`**; งานนอกสัญญาหลังปิดใช้จำแนกเอกสาร (`classify-doc`)
+  - Backend มี endpoint `PATCH /jobs/:id/out-of-contract` เพื่อย้ายนอกสัญญา (คง `PENDING`)
 - [x] Sidebar: เพิ่ม "งานที่รับผิดชอบ" (`/dashboard/my-jobs`); ไม่แสดงเมนู โปรไฟล์ (เข้าได้จาก dropdown)
-- [x] หน้ารายละเอียดงาน (`/dashboard/jobs/:id`): การ์ดแจ้งข้อขัดข้อง + การ์ดข้อมูลการแก้ไข + ฟอร์มบันทึกการแก้ไข (ลำดับ: fixEnvironment (Indoor/Outdoor) ก่อน แล้วค่อย brokenPartType (Hardware/Software); ฟิลด์บังคับ: cause, fixMethod และรูปการแก้ไข “อย่างน้อย 2 รูปแรก”; หมายเหตุ/Serial ไม่บังคับ); PATCH /jobs/:id/fix; พิมพ์/PDF — หน้า `/print/jobs/:id` + เทมเพลต (อัปเดต: ไม่ใช้ html2canvas บนหน้ารายละเอียด; มี `GET /jobs/:id/report-pdf` สำหรับไฟล์ PDF)
+- [x] หน้ารายละเอียดงาน (`/dashboard/jobs/:id`): การ์ดแจ้งข้อขัดข้อง (อัปโหลดรูปปัญหาเมื่อมี **`job.issue.upload`** — ดู §33) + การ์ดข้อมูลการแก้ไข + ฟอร์มบันทึกการแก้ไข (ลำดับ: fixEnvironment ก่อน แล้ว brokenPartType; บังคับ: cause, fixMethod และรูปอย่างน้อย 2 รูปแรก) — `PATCH /jobs/:id/fix` คง `IN_PROGRESS`; ปิดงาน + ลายเซ็นผู้แจ้งที่หน้ารายละเอียดหรือปุ่ม Sign ในรายการ (`PATCH /jobs/:id/close`) — ดู §34; พิมพ์/PDF; **จำแนกเอกสาร** (`job.classifyDoc`) เมื่อ `RESOLVED` + hex
 - [x] RBAC งานซ่อม: เพิ่ม permission `job.fix.self|any` และ `job.reopen.self|any` เพื่อให้กำหนดผ่าน `/dashboard/roles` ได้ว่า role ใด “บันทึก/ปิดงาน” และ “Reopen” ได้ (เฉพาะงานตัวเองหรือทุกงาน)
 
 ## 8. Phase 4 - MinIO Integration (2026-03-11)
@@ -86,7 +87,7 @@
 - [x] ระบบออกรายงาน PDF / พิมพ์ (Resolved) — หน้า `/print/jobs/[id]` + เทมเพลต + `print.css`; ดาวน์โหลด PDF ผ่าน `GET /jobs/:id/report-pdf` (อัปเดตจาก html2canvas+jsPDF บนหน้ารายละเอียด)
 
 ## 11. Phase 6.1 - Dashboard UI/Permission Polish (2026-03-20)
-- [x] เพิ่ม segmented tabs “สัญญา/นอกสัญญา” ใน `/dashboard/my-jobs`, `/dashboard/all`, และ `/dashboard/in-progress` (ค่าเริ่มต้นเป็น “สัญญา” แยกตาม `Job.isOutOfContract`)
+- [x] เพิ่ม segmented tabs “สัญญา/นอกสัญญา” ใน `/dashboard/my-jobs`, `/dashboard/all`, และ `/dashboard/in-progress` (ค่าเริ่มต้นเป็น “สัญญา” แยกตาม `Job.isOutOfContract`; **2026-08-14:** มองเห็นเมื่อมี **`job.viewContractTabs`**)
 - [x] ปรับ `/dashboard/pending`: ซ่อนคอลัมน์ “ผู้รับผิดชอบ” และจัดลำดับปุ่ม “จัดการ” โดยย้ายปุ่ม “ลบงาน” (`ลบงาน`) ไปไว้ท้ายสุด
 - [x] เพิ่ม alert ยืนยันก่อน “ย้ายนอกสัญญา” ในหน้ารอดำเนินการ และคงสถานะงานเดิมเป็น `PENDING` ตาม requirement
 - [x] ปรับ `/dashboard/in-progress`: ปุ่ม “อัปเดต” เปิด modal กรอก “ข้อมูลการแก้ไข” เหมือนรูปแบบการ์ดใน `/dashboard/jobs/:id` และบันทึกด้วย `PATCH /jobs/:id/fix` (อัปโหลดรูปได้สูงสุด 3 รูป)
@@ -133,7 +134,7 @@
 
 ## 14c. RBAC API เต็มชุด — menu.* / job.updateStatus / job.deleteInProgress / site.create (2026-03-31)
 
-- [x] `roles` / `users` / `settings` controllers — `PermissionsGuard` + `menu.roles` / `menu.users` / `menu.settings`; `GET /users/assignable` — `job.assign`; `PATCH /jobs/:id/status` — `job.updateStatus`; `DELETE /jobs/:id` — `job.deleteInProgress` + `job.deleteUnassigned`; `POST /areas` — `site.create`; `RBAC_ROLE_PERMISSION_CODES` + `PermissionsGuard` enum fallback; seed/sync permission
+- [x] `roles` / `users` / `settings` controllers — `PermissionsGuard` + `menu.roles` / `menu.users` / `menu.settings`; `GET /users/assignable` — `job.assign`; `PATCH /jobs/:id/status` — `job.updateStatus`; `DELETE /jobs/:id` — `job.deleteInProgress` + `job.deleteUnassigned`; `POST /areas` — `site.create`; `RBAC_ROLE_PERMISSION_CODES` + `PermissionsGuard` fallback ตามรหัสบทบาทมาตรฐาน; seed/sync permission
 - [x] เอกสาร: `README.md`, `STATUS.md`, `PLAN.md`, `TASK.md`, `backend/README.md`, `backend/docs/RBAC-Setup.md`, `backend/postman/README.md`, `frontend/README.md`
 
 ## 14. Phase 6.4 — SMTP, Reopen, assignee-only fix, Nest CLI v11, JobsList tabs (2026-03-22)
@@ -155,7 +156,7 @@
 ## 15. Phase 6.5 — GitLab CI, Docker, พอร์ต PRD, production URL, build (2026-03-23)
 
 ### CI / Deploy
-- [x] **`.gitlab-ci.yml`** — build แยก `frontend` / `backend`, deploy Docker บน PRD, SSH run; พอร์ต **8309→3000**, **8310→4000**; cleanup image แบบ manual
+- [x] **`.gitlab-ci.yml`** — build แยก `frontend` / `backend`, deploy Docker บน PRD, SSH run; พอร์ต **8404→3000**, **8405→4100**; cleanup image แบบ manual
 - [x] **`backend/Dockerfile`**, **`frontend/Dockerfile`**, **`docker-compose.yml`**, **`.dockerignore`** (ไม่ใช้ `docker/entrypoint.sh` รวมอีกต่อไป); backend CMD / `start:prod` → **`dist/src/main.js`**
 - [x] **GitLab Variables** — ใช้ **`FRONTEND_BASE_URL`** เดียว (เลิกใช้ `FRONTEND_URL_PRD` ใน pipeline)
 
@@ -215,7 +216,7 @@
 
 ## 20. Private MinIO + รูปผ่านสิทธิ์ (2026-03-28) — implement แล้ว
 
-สรุป: **[`docs/Project-Plan-Private-MinIO-Images.md`](docs/Project-Plan-Private-MinIO-Images.md)** · ดัชนีเอกสาร: [`docs/README.md`](docs/README.md), [`minio.md`](minio.md)
+สรุป: **[`docs/Project-Plan-Private-MinIO-Images.md`](docs/Project-Plan-Private-MinIO-Images.md)** · ดัชนีเอกสาร: [`docs/README.md`](docs/README.md), [`docs/minio.md`](docs/minio.md)
 
 - [x] Phase 1: Nest SDK + `getJobImageBuffer`
 - [x] Phase 2: `/job-images` + `dashboardJobImagePath` — job detail, JobsList, status เจ้าหน้าที่
@@ -299,3 +300,176 @@
 ### เอกสาร
 - [x] อัปเดต `STATUS.md`, `TASK.md`
 
+## 26. Migration — fork `cctv-app_ticket` → `dtrs-app` (2026-08-05)
+
+> Checklist เต็ม: [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md)
+
+### Git / Infrastructure (โค้ด)
+- [x] `git remote` → `http://gitlab.forthcorp.local/FORTH/dtrs-app.git`
+- [x] `.gitlab-ci.yml` — UAT+PRD: `test` → `build` → `docker_build` → manual deploy; image/container/network `dtrs-app-*`; deploy path `/home/nurdin/dtrs-app` (UAT `.115` / PRD `.128`); PRD build `.115` → `transfer:prd:images` (`DOCKER_HOST_PRD` + `docker load`) → deploy `.128`; ไม่ `docker rm` container ของ `cctv-app_ticket`
+- [x] `.gitlab-ci.yml` hardening — **`.deploy_ssh_and_validate`** (กลุ่ม A ก่อน deploy); backend unit tests mock สำหรับ CI gate
+- [x] `docker-compose.yml` — `dtrs-app-frontend` / `dtrs-app-backend` / `dtrs-app-net`, ports **8404→3000**, **8405→4100**
+- [x] `backend/src/main.ts` — `PORT` default **4100**; `frontend/src/lib/serverApiBase.ts` — ตัวอย่าง `dtrs-app-backend:4100`
+
+### Environment templates
+- [x] `backend/.env.example` — `dtrs_app`, `MINIO_BUCKET_NAME=dtrs-app`, `PORT=4100`
+- [x] `frontend/.env.example` — local dev URLs + คอมเมนต์ Docker/PRD
+- [x] `frontend/.gitignore` — track `!.env.example`
+
+### Local dev (เครื่อง dev)
+- [x] `backend/.env` — DB `dtrs_app`, `MINIO_BUCKET_NAME=dtrs-app` (config), `PORT=4100`
+- [x] GitLab MinIO กลุ่ม B ✅ (2026-08-06) — ตรวจ bucket บน server + อัปโหลดหลัง deploy UAT
+- [x] `frontend/.env` + `.env.local` sync — `API_INTERNAL_BASE_URL=http://localhost:4100/api`
+- [x] `npx prisma generate` + `npm run start:dev` → `GET http://localhost:4100/api` **200**
+- [x] `npm run dev` → `http://localhost:3000/login` **200**
+- [ ] Login E2E / seed admin ถ้ายังไม่มี user
+- [ ] `docker compose up --build` ทดสอบ container ชื่อ `dtrs-app-*`
+
+### ค้าง (โฟกัส UAT `staging` · PRD pending)
+- [x] GitLab CI/CD Variables กลุ่ม A — scope **`staging`** ✅ ([`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md))
+- [ ] **UAT:** `prisma migrate deploy` (DB `@192.168.0.11`) → push `staging` → Docker `:2375` บน `.115` → manual `deploy:uat:docker`
+- [ ] ⏸️ **pending:** Variables scope **`production`** กลุ่ม A · NPM · deploy PRD
+- [x] MinIO กลุ่ม B บน GitLab ✅ — ตรวจ bucket + อัปโหลดหลัง deploy UAT
+- [ ] ยืนยันไม่ชน `cctv-app_ticket` (หลัง deploy UAT)
+- [ ] P3–P6 branding/docs/postman (optional)
+
+### เอกสาร
+- [x] Sync docs 2026-08-06 — Variables UAT A+B ✅ · `production` pending: `docs/GitLab-CI-*`, `docs/DTRS-Migration-Checklist.md`, `docs/minio.md`, `docs/README.md`, `README.md`, `STATUS.md`, `PLAN.md`, `TASK.md`, `AGENTS.md`, `AGENT_INSTRUCTIONS.md`, `backend/README.md`
+
+## 27. GitLab CI — UAT+PRD pipeline + hardening (2026-08-05)
+
+> แผน: [`docs/GitLab-CI-Plan.md`](docs/GitLab-CI-Plan.md) · Variables: [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md)
+
+### Pipeline
+- [x] **`.gitlab-ci.yml`** — UAT (`staging` → `.115`) + PRD (`main`/`master` → build `.115`, transfer, deploy `.128`)
+- [x] **`test:frontend`** / **`test:backend`** — FE lint + BE eslint (ห้าม `--fix`) + jest; fail = หยุด pipeline
+- [x] **Deploy health check** — หลัง `docker run -d` ตรวจ Running + logs เมื่อ fail (UAT+PRD)
+- [x] **`transfer:prd:images` verify** — `export DOCKER_HOST` ทั้ง session ก่อน `docker images`
+- [x] **cleanup `needs`** — ไม่ติดคิวรอ manual deploy
+- [x] **`docker_build:uat`** / **`deploy:uat:docker`** / PRD build+transfer+deploy — **manual ทั้ง stage `deploy_docker`** (2026-08-06)
+- [x] **`docker_build:prd`** → **`transfer:prd:images`** → **`deploy:prd:docker`** manual
+- [x] **`transfer:prd:images`** — `docker load` บน `.128` ผ่าน **`DOCKER_HOST_PRD`**
+- [x] **`.deploy_ssh_and_validate`** — ตรวจ `DATABASE_URL`, `JWT_SECRET`, `NEXTAUTH_*`, `FRONTEND_BASE_URL`, `ALLOWED_ORIGINS` ก่อน deploy
+
+### Backend tests (CI gate)
+- [x] Mock `PrismaService` / Guards ใน `areas` + `sites` spec ให้ `npm test` ผ่านใน CI
+
+### เอกสาร
+- [x] Sync docs 2026-08-06 — Variables UAT A+B ✅ · `production` pending: `docs/GitLab-CI-Plan.md`, `docs/GitLab-CI-Variables-Checklist.md`, `docs/DTRS-Migration-Checklist.md`, `docs/minio.md`, `docs/README.md`, `README.md`, `STATUS.md`, `PLAN.md`, `TASK.md`, `AGENTS.md`, `AGENT_INSTRUCTIONS.md`
+
+### ค้าง
+- [x] ตั้ง GitLab Variables กลุ่ม A scope **`staging`** ✅
+- [ ] ทดสอบ pipeline / manual deploy UAT (`.115`)
+- [ ] ⏸️ **pending:** Variables **`production`** กลุ่ม A + NPM + deploy PRD
+- [x] MinIO กลุ่ม B บน GitLab ✅ (2026-08-06)
+
+## 28. Phase 6.14 — Frontend Light / Dark theme (2026-08-06)
+
+### Frontend
+- [x] ติดตั้ง `next-themes`; `ThemeProvider` (`defaultTheme=dark`, `storageKey=dtrs-theme`, `enableSystem=false`)
+- [x] `--glass-*` tokens + utilities; class `.light` สำหรับ subtree print
+- [x] `ThemeToggle` ใน `SiteHeader`; `useAppTheme` (mounted guard)
+- [x] Shells / shared: `PublicLayoutShell`, `DashboardLayoutShell`, `DashboardPageShell`, `CrudModal`, `JobsList`, toast, `DashboardStatCards`
+- [x] `PrintThemeShell` — บังคับ light โดยไม่ซ้อน ThemeProvider
+- [x] แก้ contrast light mode (ตาราง/ฟิลเตอร์/badge) — JobsList, sites, roles, public status
+
+### เอกสาร
+- [x] Sync: `CHANGELOG.md`, `README.md`, `STATUS.md`, `TASK.md`, `PLAN.md`, `docs/README.md`, `frontend/README.md`, `AGENTS.md`
+
+## 29. Locations master seed — MS SQL → MySQL (2026-08-14)
+
+> คู่มือ: [`docs/Locations-Master-Seed.md`](docs/Locations-Master-Seed.md) · แผน: [`docs/Meeting-11082026-Requirements-Plan.plan.md`](docs/Meeting-11082026-Requirements-Plan.plan.md) Phase B
+
+- [x] วาง dump `backend/scripts/data/TB_MST_Province.sql` / `TB_MST_District.sql` / `TB_MST_SubDistrict.sql`
+- [x] สคริปต์ `seed-locations-from-mssql.ts` (+ `npm run script:seed-locations-mssql`, `DRY_RUN=1`)
+- [x] นำเข้า local (~77 จังหวัด / ~928 อำเภอ / ~7432 ตำบล)
+- [x] fix-then-ship: Locations API lazy-load + public จังหวัดจาก Site; หน้า locations ขยายแถวโหลดลูก
+- [ ] รันบน UAT/PRD หลัง deploy เมื่อ Locations ว่าง
+- [x] Sync docs: `Locations-Master-Seed.md`, Meeting plan, `PLAN.md`, `STATUS.md`, `TASK.md`, `docs/README.md`, `AGENTS.md`, `DTRS-Migration-Checklist.md`, `backend/README.md`, `CHANGELOG.md`
+
+## 30. Site station + Sites.xlsx import (2026-08-14)
+
+> คู่มือ: [`docs/Sites-Import.md`](docs/Sites-Import.md)
+
+- [x] Prisma: `Site.station`, `Job.agency` + migration backfill
+- [x] Backend: DTO/service `existsByLocation(province, district, agency, station, subdistrict?)`; `CreateJobSchema.agency` required
+- [x] Frontend: dashboard sites modal (agency + station); public report cascade 5 ขั้น
+- [x] สคริปต์ `seed-sites-from-xlsx.ts` + `npm run script:seed-sites-xlsx` (+ `:dry`, `:clear` สำหรับ Windows)
+- [x] รัน migration + seed **local** (198 แถวจาก `Sites.xlsx`; dry-run + import; **`:clear` ลบของเก่า 209 → เหลือเฉพาะ Excel**)
+- [ ] รัน migration + seed บน UAT/PRD (สำรอง DB ก่อน `script:seed-sites-xlsx:clear` ถ้าต้องแทนที่ Site เก่า)
+- [x] Sync docs: `Sites-Import.md`, `CHANGELOG.md`, `PLAN.md`, `STATUS.md`, `TASK.md`, `AGENTS.md`, `docs/README.md`, Meeting plan, `DTRS-Migration-Checklist.md`, `backend/README.md`
+
+## 31. RBAC — custom role + แท็บสัญญา/นอกสัญญา (2026-08-14)
+
+- [x] `User.role` เป็น `VARCHAR(64)` เก็บ `AppRole.code` (เช่น `ADMIN_1`) — migration `20260814133000_user_role_varchar`; `GET /users` ไม่ 500 เมื่อมีบทบาทที่สร้างเอง
+- [x] Permission **`job.viewContractTabs`** ในแคตตาล็อก (`roles.service.ts` + `seed-roles-permissions.ts`); `JobsList` ซ่อนแท็บและตัดงานนอกสัญญาเมื่อไม่มีสิทธิ์
+- [x] Default ผูก ADMIN/STAFF/SUPERVISOR ผ่าน `ensurePermissionCatalogSynced`; บทบาทกำหนดเองติ๊กที่ `/dashboard/roles`
+- [x] Sync docs: `CHANGELOG.md`, `backend/docs/RBAC-Setup.md`, `README.md`, `STATUS.md`, `PLAN.md`, `TASK.md`, `frontend/README.md`, `docs/System-Workflow.md`
+
+## 32. Meeting-11082026 — Doc No classify + job detail (2026-08-14)
+
+> แผน: [`docs/Meeting-11082026-Requirements-Plan.plan.md`](docs/Meeting-11082026-Requirements-Plan.plan.md) Phase C (ปรับ)
+
+- [x] สร้างงาน: `ticketNo` hex 8 ตัว; มอบหมาย/bulk/OOC **ไม่** gen Running Doc No
+- [x] `PATCH /jobs/:id/classify-doc` + `job.classifyDoc` (ADMIN/SUPERVISOR) + ลายเซ็น; ในสัญญา `CM-SHF-YYYY-…` / นอกสัญญา `YYYYMM…`
+- [x] แยกสิทธิ์ปุ่มใน dialog: `job.classifyDoc.contract` / `job.classifyDoc.outOfContract`; บทบาทที่มี `job.classifyDoc` ได้ทั้งคู่รอบแรกที่แคตตาล็อกเพิ่มลูก (และตอน seed) — ติ๊กออกแล้ว restart ไม่คืน; API 403 ตามชนิดที่เลือก
+- [x] UI จำแนก: `/dashboard/all` + `/dashboard/jobs/:id` (`JobClassifyDocDialog` — เลือกแล้วยืนยัน)
+- [x] ~~ซ่อน~~ → **โชว์** RESOLVED OOC ที่จำแนกแล้วบน `/all` + `/my-jobs` (แท็บทั้งหมด/นอกสัญญา); คิวย่อ `/out-of-contract` ยังรับ PENDING + RESOLVED OOC จำแนกแล้ว (แท็บประวัติอาจเป็น superset)
+- [x] fix-then-ship job detail: รีโหลดเงียบหลังจำแนก + toast error จาก API
+- [x] Sync docs: `Meeting` plan, `System-Workflow`, `STATUS`, `PLAN`, `TASK`, `RBAC-Setup`, `docs/README`, `CHANGELOG`
+
+## 33. อัปโหลดรูปปัญหาที่แจ้ง — `job.issue.upload` (2026-08-17)
+
+> แผน: [`docs/Meeting-11082026-Requirements-Plan.plan.md`](docs/Meeting-11082026-Requirements-Plan.plan.md) Phase D · RBAC: [`backend/docs/RBAC-Setup.md`](backend/docs/RBAC-Setup.md)
+
+- [x] Permission **`job.issue.upload`** ในแคตตาล็อก (`roles.service.ts` + `seed-roles-permissions.ts`); seed **ADMIN** เท่านั้น — STAFF/SUPERVISOR/USER ติ๊กที่ `/dashboard/roles` (ไม่ใส่ใน `ACTION_CODES_SUPERVISOR`)
+- [x] `PATCH /jobs/:id/issue-images` — JWT + `PermissionsGuard` (`job.issue.upload`); งาน **PENDING / IN_PROGRESS** (รวมยังไม่มีผู้รับ); เติมต่อได้ถึง 3 รูป ไม่ลบ/ไม่แทนที่; ไม่ใช้ `job.fix.*`
+- [x] UI: card **รูปภาพปัญหาที่แจ้ง** บน `/dashboard/jobs/:id` + wrench modal ใน `JobsList`; หน้า public ยังไม่บังคับรูป
+- [x] จำกัดไฟล์: **5MB/ไฟล์** · JPG/PNG/WebP (magic bytes) · HEIC/HEIF→JPEG ฝั่ง Nest · สูงสุด 3 รูป issue/fix; ลายเซ็นผู้แจ้ง PNG; Multer oversize/เกินจำนวน → **400** ข้อความไทย
+- [x] Fallback 413 (nginx ~1MB): frontend บีบอัดรูปแล้ว retry (`jobImageProxyFallback.ts`) — ไม่แทน `client_max_body_size 50m` ที่ NPM
+- [x] Tests: `job-image-upload.spec.ts` · `jobImageUpload.test.ts` · `jobImageProxyFallback.test.ts` · `public-jobs-upload.e2e-spec.ts` · `jobs-issue-images.e2e-spec.ts`
+- [x] Sync docs: `CHANGELOG`, `RBAC-Setup`, `STATUS`, `TASK`, `README`, `frontend/README`, `backend/README`, `postman/README`, `System-Workflow`, Meeting plan, `PLAN`, Reverse-Proxy NPM
+
+## 34. แยกลายเซ็นผู้แจ้งออกจากบันทึกการแก้ไข (2026-08-17)
+
+> Grill: คง `IN_PROGRESS` ระหว่างรอเซ็น · API แยก `/fix` กับ `/close` · ปิดงานที่หน้ารายละเอียดหรือปุ่ม Sign ใน `JobsList`
+
+- [x] `PATCH /jobs/:id/fix` บันทึกการแก้ไขอย่างเดียว (ไม่รับลายเซ็น, คง `IN_PROGRESS`)
+- [x] `PATCH /jobs/:id/close` บังคับลายเซ็นผู้แจ้ง + ตรวจข้อมูลแก้ครบ → `RESOLVED` + อีเมล/PDF
+- [x] UI: หน้ารายละเอียดแยกบล็อก「บันทึกการแก้ไข」กับ「ปิดงาน — ลายเซ็นผู้แจ้ง」; wrench modal บันทึกอย่างเดียว แล้วเปิด dialog เซ็นในรายการ
+- [x] fix-then-ship: modal บันทึก `/fix` ก่อนไปปิดงาน; `/close` ตรวจครบก่อนอัปโหลดลายเซ็น; toast แยกกรณีบันทึกแล้วแต่ปิดไม่สำเร็จ; unit `jobs-close.service.spec.ts` + e2e `jobs-close.e2e-spec.ts`
+- [x] ป้าย「รอเซ็นผู้แจ้ง」ในรายการงาน (`JobsList` / `/dashboard/my-jobs` / `in-progress`) เมื่อสถานะยัง `IN_PROGRESS` แต่ข้อมูลแก้ไขครบ (สาเหตุ/วิธีแก้ + รูป ≥ 2) — ไม่เพิ่มสถานะใหม่; unit `jobFixImageSlots.test.ts`
+- [x] ปุ่ม Sign ใน `JobsList` เมื่อรอเซ็น — `JobReporterSignDialog` จากรายการ (`job.fix.self|any`); ไม่เพิ่ม permission key; ปุ่มประแจจำกัดผู้รับงาน
+
+## 35. Meeting-11082026 — PDF รายงาน CM/SHF (2026-08-17)
+
+> แผน: [`docs/Meeting-11082026-Requirements-Plan.plan.md`](docs/Meeting-11082026-Requirements-Plan.plan.md) ข้อ 8 Reports · scrutinize fix-then-ship
+
+- [x] `reportPdfConstants.ts` — hardcode หัวโครงการ SHF + สัญญา 8680228
+- [x] `PdfReportHeader` — NBTC | ข้อความโครงการ | FORTH (หน้า 1 + 2)
+- [x] `JobMaintenancePdfTemplate` — ตาราง 5 แถว, รายละเอียด CM, ลายเซ็นหน้า 1, รูป caption ใต้ช่อง; คง `issueLine` fallback `brokenPart`
+- [x] `print.css` — signature block, ความสูงช่องรูปหลัง header หน้า 2
+- [x] `frontend/public/logo/logo-FORTH.png` — โลโก้ FORTH ทางการ (ตัดพื้นดำเป็นโปร่งใสสำหรับพิมพ์บนพื้นขาว)
+- [x] Sync docs: `CHANGELOG`, Meeting plan, `DTRS-Migration-Checklist` #39, `System-Workflow`
+
+## 36. Dashboard RBAC สรุป + UI polish (2026-09-04)
+
+- [x] `/dashboard`: ไม่มี **`job.viewContractTabs`** → นับเฉพาะงานในสัญญา; ซ่อน card «นอกสัญญา · ยังไม่ปิด»
+- [x] `GET /jobs/reports/summary-pdf`: กรองงานนอกสัญญา + ซ่อน KPI นอกสัญญาตามสิทธิ์เดียวกัน (`JobsPdfService` + `RolesService`)
+- [x] ลบ watermark ไอคอน CCTV จาก `PublicLayoutShell`; ลบ section placeholder «แนวทางขยายวิเคราะห์ในอนาคต» บนภาพรวม
+- [x] แถบช่วงสรุปบนภาพรวม: padding ชัด + ไม่ตัดบน xl; select ทับ `.form-input-glass` ด้วย `!pl`/`!pr`
+- [x] Sync docs: `CHANGELOG`, `RBAC-Setup`, `STATUS`, `README`, `AGENTS`, `System-Workflow`, `DTRS-Migration-Checklist` #40, `frontend/README`, `TASK`, debug-mantra (FE/BE)
+
+## 37. Doc No ในสัญญา = CM-SHF-YYYY-Running (2026-09-04)
+
+- [x] `formatDocTicketNo` ใช้ `CM-SHF-YYYY-XXXX` (YYYY Asia/Bangkok ณ วันจำแนก); `DocSequence` ในสัญญา `period=''` — running ไม่รีเซ็ต
+- [x] `isFormalDocTicketNo` รับ `CM-SHF-YYYY-…` และเลขเก่า `CM-SHF-2002-…`
+- [x] fix-then-ship (scrutinize): ไม่รีเซ็ตรายปี — คืน `period=''` แล้วส่งแค่ `periodYear` ตอน format
+- [x] UI dialog + unit/e2e + sync docs (`System-Workflow`, Meeting plan, `RBAC-Setup`, `STATUS`, `CHANGELOG`)
+
+## 38. เมนูคู่มือระบบ (user-guide) (2026-09-07)
+
+- [x] Permission **`menu.userGuide`** — catalog + seed + default ADMIN; sync อัตโนมัติเมื่อ restart backend
+- [x] หน้า **`/dashboard/user-guide`** — workflow (numbered steps) + ตารางสิทธิ์ + CTA Roles/Settings
+- [x] Sidebar + เมนูด่วนภาพรวม + ลิงก์จาก `/dashboard/roles`
+- [x] เอกสาร: `CHANGELOG`, `STATUS`, `RBAC-Setup`, `TASK`
