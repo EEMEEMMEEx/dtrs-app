@@ -491,6 +491,18 @@ transfer:prd:images:
   script:
     - export DOCKER_HOST="$DOCKER_HOST_BUILD"
     - ssh "$DEPLOY_SERVER" "mkdir -p '${DEPLOY_PATH}' && chmod 755 '${DEPLOY_PATH}'"
+    # พื้นที่บน volume ของ DEPLOY_PATH — backend tar ~1GB; ต้องไม่ใช่ /home ขนาดเล็กที่เต็มง่าย
+    - |
+      echo "=== Free space on ${DEPLOY_SERVER}:${DEPLOY_PATH} ==="
+      ssh "$DEPLOY_SERVER" "df -h '${DEPLOY_PATH}'"
+      AVAIL_KB="$(ssh "$DEPLOY_SERVER" "df -Pk '${DEPLOY_PATH}' | awk 'NR==2 {print \$4}'")"
+      # อย่างน้อย ~3 GiB (3145728 KiB) สำหรับ tar + เผื่อ
+      if [ -z "$AVAIL_KB" ] || [ "$AVAIL_KB" -lt 3145728 ]; then
+        echo "ERROR: ${DEPLOY_PATH} has only ${AVAIL_KB:-0} KiB free (need >= 3145728 KiB / ~3 GiB)."
+        echo "Set GitLab Variable DEPLOY_PATH_PRD to a path on a large filesystem (e.g. /opt/dtrs-app), not a full /home."
+        echo "See docs/GitLab-CI-Variables-Checklist.md กลุ่ม D"
+        exit 1
+      fi
     - |
       transfer_image() {
         local IMAGE="$1"
