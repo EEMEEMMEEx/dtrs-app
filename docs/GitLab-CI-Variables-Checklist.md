@@ -3,7 +3,7 @@
 > **Production:** `https://dtrs-app.forth.co.th` · API ที่ `/api`  
 > **อ้างอิง pipeline:** [`.gitlab-ci.yml`](../.gitlab-ci.yml) — UAT (`staging`) + PRD (`main`/`master`); แผน: [`GitLab-CI-Plan.md`](./GitLab-CI-Plan.md)  
 > **Migration รวม:** [`DTRS-Migration-Checklist.md`](./DTRS-Migration-Checklist.md)  
-> **สถานะ (2026-08-06):** กลุ่ม A scope **`staging` ✅** · กลุ่ม B **MinIO ✅** (ตั้งบน UI แล้ว) · SSH/path `.115` พร้อม · **โฟกัส = UAT (`staging`)** · scope **`production` กลุ่ม A = pending**
+> **สถานะ (2026-10-26):** กลุ่ม A scope **`staging` ✅** · กลุ่ม B **MinIO ✅** (host เดียว UAT/PRD แยก bucket) · SSH/path `.115` พร้อม · **โฟกัส = เตรียม `production`** · Gate UAT smoke HTTP ✅ · `SSH_PRIVATE_KEY` production **เลื่อน** · MinIO PRD keys/bucket **รอ infra**
 
 **ที่ตั้งใน GitLab:** Project **`FORTH/dtrs-app`** → **Settings** → **CI/CD** → **Variables**
 
@@ -37,7 +37,7 @@
 | ☐ | `FRONTEND_BASE_URL` | backend (PDF Puppeteer, อีเมล) + GitLab Environment URL | `https://dtrs-app.forth.co.th` | | ✅ |
 | ☐ | `ALLOWED_ORIGINS` | backend CORS | `https://dtrs-app.forth.co.th` (คั่นด้วย comma ถ้ามีหลาย origin) | | ✅ |
 
-> **`NEXT_PUBLIC_API_BASE_URL`** ถูก bake ตอน `docker build` frontend — เปลี่ยนค่าต้อง rebuild image ใหม่
+> **`NEXT_PUBLIC_API_BASE_URL`** ถูก bake ตอน **`build:frontend`** (`npm run build`) — image `ci-runner` แค่ COPY artifact; เปลี่ยนค่าต้อง **re-run pipeline จาก build** (ไม่ใช่แค่ `docker_build:prd`)
 
 ---
 
@@ -73,20 +73,32 @@
 
 ---
 
-## กลุ่ม D — อยู่ใน `.gitlab-ci.yml` แล้ว (override ได้ถ้าต้องการ)
+## กลุ่ม D — Deploy host/path (บังคับใน GitLab UI — **ไม่ hardcode** ใน `.gitlab-ci.yml`)
+
+> Pipeline จะ **fail ก่อน SSH/docker** ถ้าตัวแปรเหล่านี้ว่าง (`.validate_deploy_targets` / `.validate_docker_host_build`)  
+> ตั้งแยก scope **`staging`** / **`production`** ตามคอลัมน์ · `DOCKER_HOST_BUILD` ใช้ตอน build ทั้ง UAT และ PRD (build บน `.115`) — ตั้ง scope **all** หรือซ้ำทั้งสอง env
+
+| ☐ | Variable | Scope แนะนำ | ค่าตัวอย่าง | validate |
+|---|----------|-------------|-------------|----------|
+| ☐ | `DOCKER_HOST_BUILD` | `*` (all) หรือ staging+production | `tcp://192.168.0.115:2375` | ✅ `docker_build:*` / `transfer:prd` |
+| ☐ | `DOCKER_HOST_UAT` | `staging` | `tcp://192.168.0.115:2375` | ✅ deploy/cleanup UAT |
+| ☐ | `DOCKER_HOST_PRD` | `production` | `tcp://192.168.0.128:2375` | ✅ transfer/deploy/cleanup PRD |
+| ☐ | `DEPLOY_SERVER_UAT` | `staging` | `nurdin@192.168.0.115` | ✅ |
+| ☐ | `DEPLOY_PATH_UAT` | `staging` | `/home/nurdin/dtrs-app` | ✅ |
+| ☐ | `DEPLOY_SERVER_PRD` | `production` | `nurdin@192.168.0.128` | ✅ |
+| ☐ | `DEPLOY_PATH_PRD` | `production` | `/home/nurdin/dtrs-app` | ✅ |
+
+### กลุ่ม D2 — ยังอยู่ใน `.gitlab-ci.yml` (override ได้ถ้าต้องการ)
 
 | Variable | ค่า default ใน repo |
 |----------|---------------------|
-| `DOCKER_HOST_BUILD` | `tcp://192.168.0.115:2375` |
-| `DOCKER_HOST_UAT` | `tcp://192.168.0.115:2375` |
-| `DOCKER_HOST_PRD` | `tcp://192.168.0.128:2375` — ใช้ใน **`transfer:prd:images`** (`docker load`) และ **`deploy:prd:docker`** |
-| `DEPLOY_SERVER_UAT` | `nurdin@192.168.0.115` |
-| `DEPLOY_PATH_UAT` | `/home/nurdin/dtrs-app` |
-| `DEPLOY_SERVER_PRD` | `nurdin@192.168.0.128` |
-| `DEPLOY_PATH_PRD` | `/home/nurdin/dtrs-app` |
 | `APP_IMAGE_BACKEND` | `dtrs-app-backend` |
 | `APP_IMAGE_FRONTEND` | `dtrs-app-frontend` |
+| `FRONTEND_HOST_PORT` | `8404` |
+| `BACKEND_HOST_PORT` | `8405` |
 | `API_INTERNAL_BASE_URL` | `http://dtrs-app-backend:4100/api` |
+| `BACKEND_CPUS` / `BACKEND_MEMORY` / `BACKEND_PIDS_LIMIT` | resource limits |
+| `FRONTEND_CPUS` / `FRONTEND_MEMORY` / `FRONTEND_PIDS_LIMIT` | resource limits |
 
 ---
 
@@ -113,22 +125,49 @@
 - [ ] **UAT:** `cd backend && npx prisma migrate deploy` ชี้ `DATABASE_URL` ของ `@192.168.0.11:3306/dtrs_app` (หรือยืนยัน schema ครบแล้ว)
 - [ ] มี admin user ใน DB UAT (เช่น `seed-admin.ts`) สำหรับทดสอบ login
 
-### 1c) ⏸️ Pending — scope **`production`** (ยังไม่ทำรอบนี้)
+### 1c) scope **`production`** — เตรียม PRD (อัปเดต 2026-10-26)
 
-- [ ] ตั้งกลุ่ม A ครบใน scope **`production`** (PRD)
-- [ ] Protected branch = **`main`** (หรือ `master`) — สำหรับ Variables PRD
-- [ ] **PRD:** `npx prisma migrate deploy` กับ `@192.168.0.126:3306/dtrs_app` ก่อน deploy production
+**Gate 0 (ตรวจจากเครื่อง ops 2026-10-26):**
+- [x] UAT `http://192.168.0.115:8404` — `scripts/docker-regression-smoke.sh` **ผ่าน** (login 200, dashboard redirect, font, backend `/api`)
+- [ ] Protected branch = **`main`** (หรือ `master`) — ยืนยันบน GitLab UI
+- [ ] บน `.128`: path `/home/nurdin/dtrs-app` + `DOCKER_HOST=tcp://127.0.0.1:2375 docker ps` (ต้องมี SSH ก่อน)
+- [ ] บน `.128`: **`docker compose version`** (หรือ `docker-compose`) — บังคับก่อน `deploy:prd:docker` (ใช้ [`docker-compose.prod.yml`](../docker-compose.prod.yml))
+- [ ] Blocker ที่พบ: `.128:8404` ยังไม่ listen / `dtrs-app.forth.co.th` ยัง resolve ไม่ได้ — ต้องแก้ NPM/DNS ก่อน smoke PRD
 
-### 2) กลุ่ม B MinIO — ✅ ตั้งบน GitLab แล้ว (2026-08-06)
+> **หมายเหตุ secrets ใน CI:** ค่าที่ส่งผ่าน `export VAR='…'` ห้ามมีเครื่องหมาย `'` ใน password/secret — จะทำให้ heredoc พัง
+
+**กลุ่ม A — ค่าที่ต้องมี scope `production` (Masked+Protected สำหรับ secret):**
+
+| Variable | ค่า / สถานะ |
+|----------|-------------|
+| `SSH_PRIVATE_KEY` | **เลื่อนทีหลัง** — สร้างชื่อตัวแปรแล้ว; ใส่ key `nurdin@192.168.0.128` ก่อน transfer/deploy |
+| `DATABASE_URL` | `mysql://USER:***@192.168.0.126:3306/dtrs_app` — ☐ ยืนยันใส่แล้ว |
+| `JWT_SECRET` | gen แยกจาก UAT (2026-10-26) — ☐ ยืนยันใส่ GitLab แล้ว |
+| `NEXTAUTH_SECRET` | gen แยกจาก UAT (2026-10-26) — ☐ ยืนยันใส่ GitLab แล้ว |
+| `NEXTAUTH_URL` | `https://dtrs-app.forth.co.th` — ☐ |
+| `NEXT_PUBLIC_API_BASE_URL` | `https://dtrs-app.forth.co.th/api` — ☐ (ก่อน `build:frontend` บน `main`) |
+| `FRONTEND_BASE_URL` | `https://dtrs-app.forth.co.th` — ☐ |
+| `ALLOWED_ORIGINS` | `https://dtrs-app.forth.co.th` — ☐ |
+
+- [ ] ตั้งกลุ่ม A ครบใน scope **`production`** (ยกเว้น SSH ที่เลื่อน)
+- [ ] **PRD:** `npx prisma migrate deploy` กับ `@192.168.0.126:3306/dtrs_app` ก่อน deploy — ต้องมี `YES, MIGRATE production @192.168.0.126/dtrs_app`
+- [ ] seed-admin บน DB PRD ก่อนทดสอบ login
+
+**ลำดับก่อนกด deploy PRD:** กลุ่ม A (ยกเว้น SSH) → MinIO bucket/keys → NPM+DNS → SSH key → migrate+YES → manual `docker_build:prd` → `transfer` → `deploy`+YES → smoke
+
+### 2) กลุ่ม B MinIO — ✅ host ร่วม · แยก bucket (อัปเดต 2026-10-26)
+
+**ตกลง:** UAT/PRD ใช้ **MinIO host เดียวกัน** — แยกแค่ bucket (`dtrs-app-uat` / `dtrs-app`)  
+`MINIO_ENDPOINT` / `MINIO_PORT` / `MINIO_PUBLIC_URL` / `MINIO_SERVER_FETCH_BASE_URL` (= เช่น `http://192.168.0.71:9000`) ใช้ scope **`*`** ได้
 
 - [x] `MINIO_ENDPOINT`
 - [x] `MINIO_PORT` — scope **all**
-- [x] `MINIO_ACCESS_KEY`
-- [x] `MINIO_SECRET_KEY`
-- [x] `MINIO_BUCKET_NAME` (ตรวจว่า UAT ใช้ **`dtrs-app-uat`** ตามที่ตกลง)
 - [x] `MINIO_PUBLIC_URL` — scope **all**
 - [x] `MINIO_SERVER_FETCH_BASE_URL` — scope **all**
-- [ ] ยืนยัน bucket มีจริงบน MinIO server + ทดสอบอัปโหลดหลัง deploy UAT
+- [x] สร้างชื่อตัวแปร scope **`production`:** `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` / `MINIO_BUCKET_NAME` — **รอค่าจาก infra**
+- [ ] ใส่ค่า infra → `MINIO_BUCKET_NAME=dtrs-app` (production) · keys Masked
+- [ ] ยืนยัน bucket **`dtrs-app`** มีจริงบน server (แยกจาก `dtrs-app-uat` / `cctv-app`)
+- [ ] ทดสอบอัปโหลดหลัง deploy UAT/PRD
 
 ### 3) หลัง deploy ครั้งแรก (ตรวจ)
 
@@ -237,7 +276,7 @@ CRON_SECRET=***
 - [ ] `DOCKER_HOST=tcp://127.0.0.1:2375 docker ps` บน `.115`
 
 **Deploy path บน `.115` (UAT):** `/home/nurdin/dtrs-app` ✅  
-**Deploy path บน `.128` (PRD):** `/home/nurdin/dtrs-app` — ⏸️ pending (ยังไม่เตรียม SSH / Variables รอบนี้)
+**Deploy path บน `.128` (PRD):** `/home/nurdin/dtrs-app` — Variables กำลังเตรียม · **SSH key production เลื่อน** · ต้องมี Docker TCP + **`docker compose`** ก่อนกด deploy
 
 ---
 

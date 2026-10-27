@@ -1,8 +1,8 @@
 # Project Status - ระบบแจ้งซ่อม
 
-**วันที่อัปเดตสถานะ:** 2026-08-17
+**วันที่อัปเดตสถานะ:** 2026-10-26
 
-**Migration (`cctv-app_ticket` → `dtrs-app`):** ดู [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md) — P0 โค้ด ✅ · GitLab CI ✅ · **Variables กลุ่ม A `staging` + MinIO กลุ่ม B ✅** · **`production` กลุ่ม A / NPM = pending** · โฟกัสถัดไป = deploy UAT
+**Migration (`cctv-app_ticket` → `dtrs-app`):** ดู [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md) — P0 โค้ด ✅ · GitLab CI ✅ · **Variables กลุ่ม A `staging` + MinIO กลุ่ม B ✅** · **เตรียม `production`:** UAT smoke HTTP ✅ (2026-10-26) · กลุ่ม A/MinIO PRD กำลังตั้งบน GitLab · `SSH_PRIVATE_KEY` production **เลื่อน** · NPM/DNS โดเมนยังไม่ resolve · migrate/deploy PRD รอ YES + infra
 
 **ดัชนีเอกสาร:** [`README.md`](README.md) (ตารางสรุป), [`docs/README.md`](docs/README.md), [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md), [`docs/GitLab-CI-Plan.md`](docs/GitLab-CI-Plan.md), [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md), [`docs/minio.md`](docs/minio.md), [`docs/Project-Plan-Private-MinIO-Images.md`](docs/Project-Plan-Private-MinIO-Images.md), [`docs/Job-Serial-Multi-Row.md`](docs/Job-Serial-Multi-Row.md), [`docs/Locations-Master-Seed.md`](docs/Locations-Master-Seed.md), [`docs/Sites-Import.md`](docs/Sites-Import.md), [`docs/MinIO-Orphan-Cleanup.md`](docs/MinIO-Orphan-Cleanup.md)
 
@@ -215,9 +215,11 @@ npx ts-node scripts/seed-roles-permissions.ts
 ## 🚀 แผนงานถัดไป (Phase 6)
 
 - [x] ตั้ง GitLab CI/CD Variables กลุ่ม A scope **`staging`** ✅ — [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md)
-- [ ] **โฟกัส UAT:** `prisma migrate deploy` (DB UAT) → push `staging` → ตรวจ Docker `:2375` บน `.115` → manual `deploy:uat:docker`
-- [ ] ⏸️ **pending:** Variables กลุ่ม A scope **`production`** · NPM — ทำหลัง UAT นิ่ง
-- [x] MinIO กลุ่ม B บน GitLab ✅ (2026-08-06) — ตรวจอัปโหลดหลัง deploy UAT
+- [x] **Gate UAT smoke (2026-10-26):** `http://192.168.0.115:8404` + `:8405/api` — `scripts/docker-regression-smoke.sh` ผ่าน
+- [ ] ตรวจ Docker `:2375` บน `.115` / อัปโหลดรูป UAT ด้วยตา (ถ้ายัง)
+- [ ] **PRD prep:** ใส่กลุ่ม A scope **`production`** ให้ครบ (ยกเว้น SSH ที่เลื่อน) · รอ infra MinIO keys + `MINIO_BUCKET_NAME=dtrs-app` — ดู checklist §1c
+- [ ] **PRD blockers ก่อน deploy:** NPM+DNS `dtrs-app.forth.co.th` · `SSH_PRIVATE_KEY` · `YES, MIGRATE…` · `YES, DEPLOY production @192.168.0.128` · โฮสต์ต้องมี `docker compose` (job ใช้ [`docker-compose.prod.yml`](docker-compose.prod.yml))
+- [x] MinIO กลุ่ม B บน GitLab ✅ — host ร่วม UAT/PRD แยก bucket (2026-10-26)
 - [ ] รัน Seed Script บน **UAT/PRD** (และ seed-admin ถ้ายังไม่มี admin) — **`seed-locations-from-mssql.ts`** เมื่อ Locations ว่าง · **`seed-sites-from-xlsx.ts`** หลัง migration `Site.station`/`Job.agency` (local ✅ 198 แถวแล้ว) — ดู [`docs/Locations-Master-Seed.md`](docs/Locations-Master-Seed.md), [`docs/Sites-Import.md`](docs/Sites-Import.md)
 - [ ] ติดตั้ง Socket.io บน Frontend เพื่อ Real-time Notifications
 - [x] ระบบออกรายงาน PDF / พิมพ์ — ใช้หน้า `/print/jobs/[id]` + เทมเพลต + `print.css` (แทนการดาวน์โหลด html2canvas บนหน้ารายละเอียด); ปรับแต่ง layout เพิ่มเติมทำได้เป็นงานต่อยอด

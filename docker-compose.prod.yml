@@ -1,0 +1,74 @@
+# Production deploy (GitLab CI → nurdin@192.168.0.128)
+# ใช้ image ที่ transfer แล้ว — ไม่ build บน PRD
+#
+# CI: scp ไฟล์นี้ไป $DEPLOY_PATH แล้ว
+#   export BACKEND_IMAGE=... FRONTEND_IMAGE=... + กลุ่ม A/B env
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# ห้าม commit secrets — ค่าส่งจาก GitLab Variables ตอน deploy เท่านั้น
+# Local check: docker compose -f docker-compose.prod.yml config
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-dtrs-app-backend:latest-prd}
+    container_name: dtrs-app-backend
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:rw,noexec,nosuid
+    ports:
+      - "${BACKEND_HOST_PORT:-8405}:4100"
+    environment:
+      NODE_ENV: production
+      PORT: "4100"
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
+      MINIO_PORT: ${MINIO_PORT:-}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
+      MINIO_SERVER_FETCH_BASE_URL: ${MINIO_SERVER_FETCH_BASE_URL:-}
+      SMTP_TLS_REJECT_UNAUTHORIZED: ${SMTP_TLS_REJECT_UNAUTHORIZED:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+    networks:
+      dtrs-app-net:
+        # ให้ DNS ใช้ได้ทั้ง service name และชื่อ container (CI / smoke)
+        aliases:
+          - dtrs-app-backend
+    cpus: ${BACKEND_CPUS:-1.50}
+    mem_limit: ${BACKEND_MEMORY:-1536m}
+    pids_limit: ${BACKEND_PIDS_LIMIT:-512}
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-dtrs-app-frontend:latest-prd}
+    container_name: dtrs-app-frontend
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:rw,noexec,nosuid
+    ports:
+      - "${FRONTEND_HOST_PORT:-8404}:3000"
+    environment:
+      NODE_ENV: production
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      # Compose DNS: ชัวร์สุด = ชื่อ service `backend` (ไม่พึ่งแค่ container_name)
+      # aliases ด้านบนรองรับค่า CI เดิม `http://dtrs-app-backend:4100/api` ด้วย
+      API_INTERNAL_BASE_URL: ${API_INTERNAL_BASE_URL:-http://backend:4100/api}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_URL: ${SENTRY_URL:-}
+    depends_on:
+      - backend
+    networks:
+      dtrs-app-net:
+        aliases:
+          - dtrs-app-frontend
+    cpus: ${FRONTEND_CPUS:-0.50}
+    mem_limit: ${FRONTEND_MEMORY:-512m}
+    pids_limit: ${FRONTEND_PIDS_LIMIT:-256}
+
+networks:
+  dtrs-app-net:
+    name: dtrs-app-net

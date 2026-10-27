@@ -8,7 +8,8 @@
 
 **GitLab CI Variables (กลุ่ม B):** ตั้งบน UI แล้ว (2026-08-06) — ดู [`GitLab-CI-Variables-Checklist.md`](./GitLab-CI-Variables-Checklist.md)  
 · `MINIO_PORT` / `MINIO_PUBLIC_URL` / `MINIO_SERVER_FETCH_BASE_URL` = scope **all**  
-· bucket แนะนำ: UAT **`dtrs-app-uat`** · PRD **`dtrs-app`** (อย่าใช้ `cctv-app`)
+· **UAT/PRD ใช้ host เดียวกัน** (ตกลง 2026-10-26) — แยกแค่ bucket: UAT **`dtrs-app-uat`** · PRD **`dtrs-app`** (อย่าใช้ `cctv-app`)  
+· PRD: สร้างชื่อ `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` / `MINIO_BUCKET_NAME` scope `production` แล้ว — **รอค่าจาก infra**
 
 ---
 
