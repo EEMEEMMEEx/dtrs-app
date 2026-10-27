@@ -1,9 +1,12 @@
 # Production deploy (GitLab CI → nurdin@192.168.0.128)
 # ใช้ image ที่ transfer แล้ว — ไม่ build บน PRD
 #
-# CI: scp ไฟล์นี้ไป $DEPLOY_PATH แล้ว
+# CI: scp ไฟล์นี้ไป $DEPLOY_PATH_PRD แล้ว
 #   export BACKEND_IMAGE=... FRONTEND_IMAGE=... + กลุ่ม A/B env
 #   docker compose -f docker-compose.prod.yml up -d
+#
+# DEPLOY_PATH_PRD ตั้งใน GitLab (กลุ่ม D) — ต้องอยู่บน filesystem ที่มีที่ว่างพอ
+# สำหรับ scp image tar (~1GB+); อย่าใช้ /home ที่พาร์ติชันเล็ก/เต็ม (แนะนำ /opt/dtrs-app)
 #
 # ห้าม commit secrets — ค่าส่งจาก GitLab Variables ตอน deploy เท่านั้น
 # Local check: docker compose -f docker-compose.prod.yml config
