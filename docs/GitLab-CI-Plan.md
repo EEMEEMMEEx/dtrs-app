@@ -143,8 +143,8 @@ flowchart TD
 | `deploy:uat:docker` | deploy_docker | `staging` | **ใช่** | **pull+retag** แล้ว `docker run` บน `.115` — **manual** · กลุ่ม A+E · ตรวจ Running |
 | `docker_build:prd` | deploy_docker | `main`, `master` | **ใช่** | build 2 images บน `.115` + **push registry** — **manual** |
 | `deploy:prd:docker` | deploy_docker | `main`, `master` | **ใช่** | **pull+retag** + scp compose + `compose up` บน `.128` — **manual** · `needs: docker_build:prd` |
-| `cleanup:docker:uat` | cleanup | `staging` | ใช่ | `needs: docker_build:uat` — ไม่ต้องรอ manual deploy |
-| `cleanup:docker:prd` | cleanup | `main`, `master` | ใช่ | `needs: docker_build:prd` |
+| `cleanup:docker:uat` | cleanup | `staging` | ใช่ | `needs: docker_build:uat` — local `.115` เฉพาะแท็ก UAT ของ `dtrs-app-*` (KEEP=2) · **ไม่** `prune` ทั้ง host · **ไม่** ลบ tag บน registry |
+| `cleanup:docker:prd` | cleanup | `main`, `master` | ใช่ | `needs: docker_build:prd` — `.115` ผ่าน `DOCKER_HOST_BUILD` + `.128` ผ่าน SSH · เฉพาะแท็ก PRD · registry ลบมือ |
 
 > **Removed (2026-10-27):** job `transfer:prd:images` (`docker save` / scp / `docker load`) — แทนด้วย registry push/pull
 
@@ -187,7 +187,8 @@ Template **`.validate_deploy_env`** + **`.deploy_ssh_and_validate`** (extends `.
 
 ```text
 Runner → DOCKER_HOST_BUILD (.115)
-  → docker build + tag ชื่อสั้น (dtrs-app-*:uat-latest|latest-prd)
+  → docker build + tag ชื่อสั้นแค่ 2 ต่อ image (`{sha}-uat|prd` + `uat-latest`|`latest-prd`) · push แล้ว untag ชื่อ registry บน host
+  → optional manual `cleanup:docker:*` — ลบ local เก่า/legacy ของ `dtrs-app-*` ต่อ env (PRD ทั้ง build+deploy host); registry UI ลบมือ
   → docker tag/push ${REGISTRY_URL}/dtrs-app/dtrs-app-*:…
 deploy:* → DOCKER_HOST_UAT|PRD
   → docker pull registry… → docker tag ชื่อสั้น

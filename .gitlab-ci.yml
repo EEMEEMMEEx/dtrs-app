@@ -182,21 +182,12 @@ variables:
     - sh scripts/docker-artifact-gate.sh .
     # .dockerignore ปกติตัด node_modules/dist/.next — ต้องเปิดก่อน COPY ใน ci-runner
     - sh scripts/docker-ci-allow-artifacts.sh .
+    # Tags ต่อ env: แค่ {sha}-uat|prd + uat-latest|latest-prd (ไม่ติด latest-uat / prd-latest / :prd)
     - docker build --target ci-runner -t "$IMAGE_BACKEND" -f backend/Dockerfile ./backend
     - docker tag "$IMAGE_BACKEND" "$TAG_BACKEND_LATEST"
-    - docker tag "$IMAGE_BACKEND" "$TAG_BACKEND_ALT"
-    - |
-      if [ -n "${TAG_BACKEND_EXTRA:-}" ]; then
-        docker tag "$IMAGE_BACKEND" "$TAG_BACKEND_EXTRA"
-      fi
     - sh scripts/docker-image-size-gate.sh "$IMAGE_BACKEND" "$BACKEND_IMAGE_MAX_MB" "backend"
     - docker build --target ci-runner -t "$IMAGE_FRONTEND" -f frontend/Dockerfile ./frontend
     - docker tag "$IMAGE_FRONTEND" "$TAG_FRONTEND_LATEST"
-    - docker tag "$IMAGE_FRONTEND" "$TAG_FRONTEND_ALT"
-    - |
-      if [ -n "${TAG_FRONTEND_EXTRA:-}" ]; then
-        docker tag "$IMAGE_FRONTEND" "$TAG_FRONTEND_EXTRA"
-      fi
     - sh scripts/docker-image-size-gate.sh "$IMAGE_FRONTEND" "$FRONTEND_IMAGE_MAX_MB" "frontend"
     - docker images "${APP_IMAGE_BACKEND}"
     - docker images "${APP_IMAGE_FRONTEND}"
@@ -364,9 +355,7 @@ docker_build:uat:
     IMAGE_BACKEND: "${APP_IMAGE_BACKEND}:${IMAGE_TAG}-uat"
     IMAGE_FRONTEND: "${APP_IMAGE_FRONTEND}:${IMAGE_TAG}-uat"
     TAG_BACKEND_LATEST: "${APP_IMAGE_BACKEND}:uat-latest"
-    TAG_BACKEND_ALT: "${APP_IMAGE_BACKEND}:latest-uat"
     TAG_FRONTEND_LATEST: "${APP_IMAGE_FRONTEND}:uat-latest"
-    TAG_FRONTEND_ALT: "${APP_IMAGE_FRONTEND}:latest-uat"
 
 deploy:uat:docker:
   stage: deploy_docker
@@ -479,11 +468,7 @@ docker_build:prd:
     IMAGE_BACKEND: "${APP_IMAGE_BACKEND}:${IMAGE_TAG}-prd"
     IMAGE_FRONTEND: "${APP_IMAGE_FRONTEND}:${IMAGE_TAG}-prd"
     TAG_BACKEND_LATEST: "${APP_IMAGE_BACKEND}:latest-prd"
-    TAG_BACKEND_ALT: "${APP_IMAGE_BACKEND}:prd-latest"
-    TAG_BACKEND_EXTRA: "${APP_IMAGE_BACKEND}:prd"
     TAG_FRONTEND_LATEST: "${APP_IMAGE_FRONTEND}:latest-prd"
-    TAG_FRONTEND_ALT: "${APP_IMAGE_FRONTEND}:prd-latest"
-    TAG_FRONTEND_EXTRA: "${APP_IMAGE_FRONTEND}:prd"
 
 deploy:prd:docker:
   stage: deploy_docker
@@ -580,6 +565,7 @@ smoke:prd:docker:
     url: $FRONTEND_BASE_URL
 
 # --- CLEANUP ---
+# Local Docker only (dtrs-app-*); no host-wide prune; no registry tag DELETE (ลบ legacy บน :5000 ด้วยมือ)
 
 .cleanup_docker_images:
   extends: .ssh_setup
@@ -592,6 +578,7 @@ smoke:prd:docker:
     - !reference [.validate_registry, before_script]
     - |
       missing=""
+      [ -z "${CLEANUP_ENV:-}" ] && missing="$missing CLEANUP_ENV"
       [ -z "$DEPLOY_SERVER" ] && missing="$missing DEPLOY_SERVER(from DEPLOY_SERVER_UAT|PRD)"
       [ -z "$DOCKER_HOST_REMOTE" ] && missing="$missing DOCKER_HOST_REMOTE(from DOCKER_HOST_UAT|PRD)"
       if [ -n "$missing" ]; then
@@ -600,27 +587,7 @@ smoke:prd:docker:
         exit 1
       fi
   script:
-    - |
-      ssh "$DEPLOY_SERVER" "DOCKER_HOST='${DOCKER_HOST_REMOTE}' bash -s" << EOF
-      set -e
-      export DOCKER_HOST='${DOCKER_HOST_REMOTE}'
-      echo "Before cleanup:"
-      docker system df || true
-      docker image prune -f || true
-      KEEP=${CLEANUP_KEEP_IMAGES}
-      # Short local names + registry-prefixed repos (same image IDs after pull+retag)
-      for APP_IMAGE in ${APP_IMAGE_BACKEND} ${APP_IMAGE_FRONTEND} ${REGISTRY_URL}/dtrs-app/${APP_IMAGE_BACKEND} ${REGISTRY_URL}/dtrs-app/${APP_IMAGE_FRONTEND}; do
-        OLD=\$(docker images "\$APP_IMAGE" --format "{{.ID}} {{.CreatedAt}}" | sort -k2 -r | tail -n +\$((KEEP+1)) | awk '{print \$1}' | sort -u)
-        if [ -n "\$OLD" ]; then
-          echo "Removing old images for \$APP_IMAGE:"
-          echo "\$OLD" | xargs -r docker rmi -f || true
-        else
-          echo "No old images to remove for \$APP_IMAGE"
-        fi
-      done
-      echo "After cleanup:"
-      docker system df || true
-      EOF
+    - sh scripts/ci-cleanup-remote.sh "$DEPLOY_SERVER" "$DOCKER_HOST_REMOTE"
 
 cleanup:docker:uat:
   extends:
@@ -630,6 +597,7 @@ cleanup:docker:uat:
   needs:
     - job: docker_build:uat
   variables:
+    CLEANUP_ENV: "uat"
     DEPLOY_SERVER: "$DEPLOY_SERVER_UAT"
     DOCKER_HOST_REMOTE: "$DOCKER_HOST_UAT"
   environment:
@@ -643,7 +611,29 @@ cleanup:docker:prd:
   needs:
     - job: docker_build:prd
   variables:
+    CLEANUP_ENV: "prd"
+    # placeholder ให้ .cleanup_docker_images before_script ผ่าน (รอบ .128 ใช้ค่าจริงใน script)
     DEPLOY_SERVER: "$DEPLOY_SERVER_PRD"
     DOCKER_HOST_REMOTE: "$DOCKER_HOST_PRD"
+  before_script:
+    - !reference [.ssh_setup, before_script]
+    - !reference [.validate_registry, before_script]
+    - !reference [.validate_docker_host_build, before_script]
+    - |
+      missing=""
+      [ -z "${CLEANUP_ENV:-}" ] && missing="$missing CLEANUP_ENV"
+      [ -z "$DEPLOY_SERVER_PRD" ] && missing="$missing DEPLOY_SERVER_PRD"
+      [ -z "$DOCKER_HOST_PRD" ] && missing="$missing DOCKER_HOST_PRD"
+      if [ -n "$missing" ]; then
+        echo "ERROR: Missing PRD cleanup hosts:$missing"
+        echo "See docs/GitLab-CI-Variables-Checklist.md กลุ่ม D"
+        exit 1
+      fi
+  script:
+    # (1) build host .115 ผ่าน DOCKER_HOST_BUILD จาก runner (เหมือน docker_build:prd — ไม่พึ่ง DEPLOY_SERVER_UAT ใน scope production)
+    - export DOCKER_HOST="$DOCKER_HOST_BUILD"
+    - sh scripts/ci-cleanup-images.sh
+    # (2) deploy host .128 ผ่าน SSH
+    - sh scripts/ci-cleanup-remote.sh "$DEPLOY_SERVER_PRD" "$DOCKER_HOST_PRD"
   environment:
     name: production

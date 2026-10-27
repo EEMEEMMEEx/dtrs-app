@@ -80,7 +80,7 @@
 
 | ☐ | Variable | Scope แนะนำ | ค่าตัวอย่าง | validate |
 |---|----------|-------------|-------------|----------|
-| ☐ | `DOCKER_HOST_BUILD` | `*` (all) หรือ staging+production | `tcp://192.168.0.115:2375` | ✅ `docker_build:*` (push registry) |
+| ☐ | `DOCKER_HOST_BUILD` | `*` (all) หรือ staging+production | `tcp://192.168.0.115:2375` | ✅ `docker_build:*` + **`cleanup:docker:prd` รอบ `.115` (จาก runner)** |
 | ☐ | `DOCKER_HOST_UAT` | `staging` | `tcp://192.168.0.115:2375` | ✅ deploy/cleanup UAT |
 | ☐ | `DOCKER_HOST_PRD` | `production` | `tcp://192.168.0.128:2375` | ✅ deploy/cleanup PRD (pull) |
 | ☐ | `DEPLOY_SERVER_UAT` | `staging` | `nurdin@192.168.0.115` | ✅ |
@@ -99,6 +99,9 @@
 | `API_INTERNAL_BASE_URL` | `http://dtrs-app-backend:4100/api` |
 | `BACKEND_CPUS` / `BACKEND_MEMORY` / `BACKEND_PIDS_LIMIT` | resource limits |
 | `FRONTEND_CPUS` / `FRONTEND_MEMORY` / `FRONTEND_PIDS_LIMIT` | resource limits |
+| `CLEANUP_KEEP_IMAGES` | `2` — จำนวน image ID ล่าสุดต่อ env ที่เก็บบน host (`scripts/ci-cleanup-images.sh`) |
+
+> **Cleanup:** เฉพาะ local `dtrs-app-*` · ไม่ `docker image prune` ทั้ง host · **ไม่ลบ tag บน registry** (legacy บน UI `:5000` ลบมือ) · helpers: [`scripts/ci-cleanup-images.sh`](../scripts/ci-cleanup-images.sh), [`scripts/ci-cleanup-remote.sh`](../scripts/ci-cleanup-remote.sh)
 
 ---
 
@@ -106,7 +109,8 @@
 
 > Pipeline validate: `.validate_registry` — **บังคับแค่ `REGISTRY_URL`** · `REGISTRY_USER` / `REGISTRY_PASSWORD` **optional** (ว่าง = ข้าม `docker login` — registry LAN ไม่บังคับ auth)  
 > Image path: `${REGISTRY_URL}/dtrs-app/dtrs-app-backend|frontend:<tag>` · helper: [`scripts/ci-registry.sh`](../scripts/ci-registry.sh)  
-> **ไม่มี** job `transfer:prd:images` แล้ว — push ตอน build · pull+retag ตอน deploy
+> **ไม่มี** job `transfer:prd:images` แล้ว — push ตอน build · pull+retag ตอน deploy  
+> Tag ที่ CI push: `{sha}-uat|prd` + `uat-latest`|`latest-prd` เท่านั้น — ลบ `prd` / `prd-latest` / `latest-uat` บน registry ด้วยมือได้
 
 | ☐ | Variable | Scope แนะนำ | Flags | ค่าตัวอย่าง | จำเป็น? |
 |---|----------|-------------|-------|-------------|--------|
