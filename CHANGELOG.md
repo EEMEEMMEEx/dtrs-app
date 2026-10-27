@@ -53,6 +53,7 @@ npm install
 
 ### Changed
 
+- **PRD CI/CD พร้อมขึ้น production**: กลุ่ม A/B/D บน GitLab (`production`) + SSH `.128` + MinIO bucket PRD ครบ; เหลือ NPM/DNS + `YES, MIGRATE` / `YES, DEPLOY` ตาม handoff
 - **CI deploy host/path ไม่ hardcode ใน YAML**: `DOCKER_HOST_*` / `DEPLOY_SERVER_*` / `DEPLOY_PATH_*` ต้องตั้งใน GitLab CI/CD Variables (กลุ่ม D); pipeline validate ก่อน build/SSH/deploy — ดู `docs/GitLab-CI-Variables-Checklist.md`
 - **Deploy PRD ใช้ `docker-compose.prod.yml`**: job `deploy:prd:docker` scp compose ไป `.128` แล้ว `docker compose up -d` ด้วย image ที่ transfer แล้ว (คงชื่อ container / พอร์ต 8404/8405 / `dtrs-app-net`); default `API_INTERNAL_BASE_URL` ใน compose = `http://backend:4100/api` + network alias `dtrs-app-backend` (รองรับค่า CI เดิม); UAT ยังเป็น `docker run`
 - **อัปเกรด Node.js เป็น 22.23.4 (LTS)**: base image ของ `frontend/Dockerfile` และ `backend/Dockerfile` ทั้งทุก stage (`builder`/`ci-runner`/`runner`) เปลี่ยนจาก `node:20-bookworm-slim` เป็น `node:22.23.4-bookworm-slim`; GitLab CI `NODE_VERSION` เป็น `22.23.4` (มีผลกับ job `test:frontend`, `test:backend`, `build:frontend`, `build:backend`) และกำหนด `engines.node` เป็น `>=22.23.4` ที่ root/`backend`/`frontend` — ไม่มีการเปลี่ยน API หรือพฤติกรรมแอป
