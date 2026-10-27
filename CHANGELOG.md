@@ -50,6 +50,8 @@ npm install
 ### Changed
 
 - **CI ใช้ private Docker registry แทน image transfer**: `docker_build:*` push ไป `${REGISTRY_URL}/dtrs-app/…` · `deploy:*` pull+retag ชื่อสั้นก่อน run/compose · **ลบ** job `transfer:prd:images` · ตัวแปรกลุ่ม E (`REGISTRY_URL` บังคับ; USER/PASSWORD optional) — ดู `docs/GitLab-CI-Variables-Checklist.md`
+- **CI image tags เหลือคู่ละ 2 ชื่อ**: `{sha}-uat|prd` + `uat-latest`/`latest-prd` · ไม่ติด `latest-uat` / `prd-latest` / `:prd` · หลัง push/pull ลบ tag ชื่อ registry บน host (เหลือชื่อสั้น)
+- **CI cleanup จำกัดเฉพาะ `dtrs-app-*`**: แยก env · KEEP=2 · ลบ legacy local · ตัด `docker image prune -f` · PRD เคลียร์ทั้ง `.115`+`.128` · registry tag ลบมือ (ไม่ผ่าน CI)
 
 ### Fixed
 
