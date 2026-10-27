@@ -9,6 +9,7 @@
 #   Deploy host/path (บังคับใน GitLab UI — ไม่ hardcode ในไฟล์นี้):
 #     DOCKER_HOST_BUILD, DOCKER_HOST_UAT / DOCKER_HOST_PRD,
 #     DEPLOY_SERVER_UAT / DEPLOY_SERVER_PRD, DEPLOY_PATH_UAT / DEPLOY_PATH_PRD
+#   Registry (กลุ่ม E): REGISTRY_URL บังคับ; REGISTRY_USER / REGISTRY_PASSWORD optional
 #   API_INTERNAL_BASE_URL — default ในไฟล์นี้ (NextAuth server-side → backend บน Docker network)
 #   GlitchTip (optional): NEXT_PUBLIC_SENTRY_DSN (bake ตอน build:frontend), SENTRY_DSN + SENTRY_URL (runtime frontend)
 #   NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE — bake ตอน build:frontend (optional override; ว่างใช้ fallback ตาม NEXT_PUBLIC_APP_ENV)
@@ -125,12 +126,22 @@ variables:
         exit 1
       fi
 
+.validate_registry:
+  before_script:
+    - |
+      if [ -z "$REGISTRY_URL" ]; then
+        echo "ERROR: REGISTRY_URL is not set (GitLab CI/CD Variables — กลุ่ม E)"
+        echo "See docs/GitLab-CI-Variables-Checklist.md"
+        exit 1
+      fi
+
 .deploy_ssh_and_validate:
   extends: .ssh_setup
   before_script:
     - !reference [.ssh_setup, before_script]
     - !reference [.validate_deploy_env, before_script]
     - !reference [.validate_deploy_targets, before_script]
+    - !reference [.validate_registry, before_script]
 
 .rules_ci_branches:
   rules:
@@ -160,6 +171,7 @@ variables:
   image: docker:latest
   before_script:
     - !reference [.validate_docker_host_build, before_script]
+    - !reference [.validate_registry, before_script]
   script:
     - |
       if [ -z "$NEXT_PUBLIC_API_BASE_URL" ]; then
@@ -188,6 +200,8 @@ variables:
     - sh scripts/docker-image-size-gate.sh "$IMAGE_FRONTEND" "$FRONTEND_IMAGE_MAX_MB" "frontend"
     - docker images "${APP_IMAGE_BACKEND}"
     - docker images "${APP_IMAGE_FRONTEND}"
+    # Push to private registry (short tags stay on build host for local inspect)
+    - . scripts/ci-registry.sh && registry_push_build_tags
 
 .smoke_deployed:
   stage: deploy_docker
@@ -326,9 +340,9 @@ deploy:summary:
   script:
     - |
       if [ "$CI_COMMIT_BRANCH" = "staging" ]; then
-        echo "UAT: docker_build:uat (manual) → deploy:uat:docker (manual) → smoke:uat:docker (auto) บน ${DEPLOY_SERVER_UAT}"
+        echo "UAT: docker_build:uat (build+push registry) → deploy:uat:docker (pull+retag → docker run) → smoke:uat:docker บน ${DEPLOY_SERVER_UAT}"
       else
-        echo "PRD: docker_build:prd → transfer:prd:images → deploy:prd:docker (compose: docker-compose.prod.yml) → smoke:prd:docker บน ${DEPLOY_SERVER_PRD}"
+        echo "PRD: docker_build:prd (build+push registry) → deploy:prd:docker (pull+retag → compose) → smoke:prd:docker บน ${DEPLOY_SERVER_PRD}"
       fi
 
 # --- DOCKER BUILD: UAT ---
@@ -360,7 +374,7 @@ deploy:uat:docker:
     - .runner_docker
     - .deploy_ssh_and_validate
     - .rules_staging
-  image: alpine:latest
+  image: docker:latest
   variables:
     DEPLOY_SERVER: "$DEPLOY_SERVER_UAT"
     DEPLOY_PATH: "$DEPLOY_PATH_UAT"
@@ -374,6 +388,9 @@ deploy:uat:docker:
     name: staging
     url: $FRONTEND_BASE_URL
   script:
+    # Pull from registry onto UAT daemon, retag short names, then docker run via SSH
+    - export DOCKER_HOST="$DOCKER_HOST_REMOTE"
+    - . scripts/ci-registry.sh && registry_login && registry_pull_and_retag "$BACKEND_IMAGE" && registry_pull_and_retag "$FRONTEND_IMAGE"
     - |
       ssh "$DEPLOY_SERVER" "bash -s" << EOF
       set -e
@@ -443,7 +460,7 @@ smoke:uat:docker:
     name: staging
     url: $FRONTEND_BASE_URL
 
-# --- DOCKER BUILD + TRANSFER: PRD ---
+# --- DOCKER BUILD + DEPLOY: PRD (registry push/pull — no transfer) ---
 
 docker_build:prd:
   stage: deploy_docker
@@ -468,74 +485,13 @@ docker_build:prd:
     TAG_FRONTEND_ALT: "${APP_IMAGE_FRONTEND}:prd-latest"
     TAG_FRONTEND_EXTRA: "${APP_IMAGE_FRONTEND}:prd"
 
-transfer:prd:images:
-  stage: deploy_docker
-  extends:
-    - .runner_docker
-    - .ssh_setup
-    - .rules_prd
-  image: docker:latest
-  variables:
-    DEPLOY_SERVER: "$DEPLOY_SERVER_PRD"
-    DEPLOY_PATH: "$DEPLOY_PATH_PRD"
-    DOCKER_HOST_REMOTE: "$DOCKER_HOST_PRD"
-  needs:
-    - job: docker_build:prd
-  when: manual
-  environment:
-    name: production
-  before_script:
-    - !reference [.ssh_setup, before_script]
-    - !reference [.validate_deploy_targets, before_script]
-    - !reference [.validate_docker_host_build, before_script]
-  script:
-    - export DOCKER_HOST="$DOCKER_HOST_BUILD"
-    - ssh "$DEPLOY_SERVER" "mkdir -p '${DEPLOY_PATH}' && chmod 755 '${DEPLOY_PATH}'"
-    # พื้นที่บน volume ของ DEPLOY_PATH — backend tar ~1GB; ต้องไม่ใช่ /home ขนาดเล็กที่เต็มง่าย
-    - |
-      echo "=== Free space on ${DEPLOY_SERVER}:${DEPLOY_PATH} ==="
-      ssh "$DEPLOY_SERVER" "df -h '${DEPLOY_PATH}'"
-      AVAIL_KB="$(ssh "$DEPLOY_SERVER" "df -Pk '${DEPLOY_PATH}' | awk 'NR==2 {print \$4}'")"
-      # อย่างน้อย ~3 GiB (3145728 KiB) สำหรับ tar + เผื่อ
-      if [ -z "$AVAIL_KB" ] || [ "$AVAIL_KB" -lt 3145728 ]; then
-        echo "ERROR: ${DEPLOY_PATH} has only ${AVAIL_KB:-0} KiB free (need >= 3145728 KiB / ~3 GiB)."
-        echo "Set GitLab Variable DEPLOY_PATH_PRD to a path on a large filesystem (e.g. /opt/dtrs-app), not a full /home."
-        echo "See docs/GitLab-CI-Variables-Checklist.md กลุ่ม D"
-        exit 1
-      fi
-    - |
-      transfer_image() {
-        local IMAGE="$1"
-        local TAR_NAME
-        TAR_NAME="$(echo "$IMAGE" | tr '/:' '_').tar"
-        local TAR_PATH="/tmp/${TAR_NAME}"
-        echo "=== Saving ${IMAGE} from build server (${DOCKER_HOST}) ==="
-        docker save "$IMAGE" -o "$TAR_PATH"
-        echo "=== Copying to ${DEPLOY_SERVER}:${DEPLOY_PATH}/ ==="
-        scp "$TAR_PATH" "${DEPLOY_SERVER}:${DEPLOY_PATH}/"
-        echo "=== Loading on PRD server (DOCKER_HOST=${DOCKER_HOST_REMOTE}) ==="
-        ssh "$DEPLOY_SERVER" "DOCKER_HOST='${DOCKER_HOST_REMOTE}' docker load -i '${DEPLOY_PATH}/${TAR_NAME}' && rm -f '${DEPLOY_PATH}/${TAR_NAME}'"
-        rm -f "$TAR_PATH"
-      }
-      transfer_image "${APP_IMAGE_BACKEND}:latest-prd"
-      transfer_image "${APP_IMAGE_FRONTEND}:latest-prd"
-      transfer_image "${APP_IMAGE_BACKEND}:${IMAGE_TAG}-prd"
-      transfer_image "${APP_IMAGE_FRONTEND}:${IMAGE_TAG}-prd"
-    - |
-      ssh "$DEPLOY_SERVER" "bash -s" << EOF
-      set -e
-      export DOCKER_HOST='${DOCKER_HOST_REMOTE}'
-      docker images '${APP_IMAGE_BACKEND}'
-      docker images '${APP_IMAGE_FRONTEND}'
-      EOF
-
 deploy:prd:docker:
   stage: deploy_docker
   extends:
     - .runner_docker
     - .deploy_ssh_and_validate
     - .rules_prd
-  image: alpine:latest
+  image: docker:latest
   variables:
     DEPLOY_SERVER: "$DEPLOY_SERVER_PRD"
     DEPLOY_PATH: "$DEPLOY_PATH_PRD"
@@ -543,13 +499,15 @@ deploy:prd:docker:
     BACKEND_IMAGE: "${APP_IMAGE_BACKEND}:latest-prd"
     FRONTEND_IMAGE: "${APP_IMAGE_FRONTEND}:latest-prd"
   needs:
-    - job: transfer:prd:images
+    - job: docker_build:prd
   when: manual
   environment:
     name: production
     url: $FRONTEND_BASE_URL
   script:
-    # PRD: docker compose (docker-compose.prod.yml) — UAT ยังใช้ docker run
+    # Pull from registry onto PRD daemon, retag short names, then compose via SSH
+    - export DOCKER_HOST="$DOCKER_HOST_REMOTE"
+    - . scripts/ci-registry.sh && registry_login && registry_pull_and_retag "$BACKEND_IMAGE" && registry_pull_and_retag "$FRONTEND_IMAGE"
     - ssh "$DEPLOY_SERVER" "mkdir -p '${DEPLOY_PATH}' && chmod 755 '${DEPLOY_PATH}'"
     - scp docker-compose.prod.yml "${DEPLOY_SERVER}:${DEPLOY_PATH}/docker-compose.prod.yml"
     - |
@@ -631,6 +589,7 @@ smoke:prd:docker:
   allow_failure: true
   before_script:
     - !reference [.ssh_setup, before_script]
+    - !reference [.validate_registry, before_script]
     - |
       missing=""
       [ -z "$DEPLOY_SERVER" ] && missing="$missing DEPLOY_SERVER(from DEPLOY_SERVER_UAT|PRD)"
@@ -649,7 +608,8 @@ smoke:prd:docker:
       docker system df || true
       docker image prune -f || true
       KEEP=${CLEANUP_KEEP_IMAGES}
-      for APP_IMAGE in ${APP_IMAGE_BACKEND} ${APP_IMAGE_FRONTEND}; do
+      # Short local names + registry-prefixed repos (same image IDs after pull+retag)
+      for APP_IMAGE in ${APP_IMAGE_BACKEND} ${APP_IMAGE_FRONTEND} ${REGISTRY_URL}/dtrs-app/${APP_IMAGE_BACKEND} ${REGISTRY_URL}/dtrs-app/${APP_IMAGE_FRONTEND}; do
         OLD=\$(docker images "\$APP_IMAGE" --format "{{.ID}} {{.CreatedAt}}" | sort -k2 -r | tail -n +\$((KEEP+1)) | awk '{print \$1}' | sort -u)
         if [ -n "\$OLD" ]; then
           echo "Removing old images for \$APP_IMAGE:"
@@ -681,7 +641,7 @@ cleanup:docker:prd:
     - .cleanup_docker_images
     - .rules_prd
   needs:
-    - job: transfer:prd:images
+    - job: docker_build:prd
   variables:
     DEPLOY_SERVER: "$DEPLOY_SERVER_PRD"
     DOCKER_HOST_REMOTE: "$DOCKER_HOST_PRD"

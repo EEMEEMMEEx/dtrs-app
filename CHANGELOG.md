@@ -47,9 +47,13 @@ npm install
 
 ## [Unreleased]
 
+### Changed
+
+- **CI ใช้ private Docker registry แทน image transfer**: `docker_build:*` push ไป `${REGISTRY_URL}/dtrs-app/…` · `deploy:*` pull+retag ชื่อสั้นก่อน run/compose · **ลบ** job `transfer:prd:images` · ตัวแปรกลุ่ม E (`REGISTRY_URL` บังคับ; USER/PASSWORD optional) — ดู `docs/GitLab-CI-Variables-Checklist.md`
+
 ### Fixed
 
-- **CI `transfer:prd:images`**: ตรวจพื้นที่ว่างบน `$DEPLOY_PATH` (≥ ~3 GiB) ก่อน `scp` image tar — กัน fail แบบ `scp: write remote … Failure` เมื่อ `/home` เต็ม; เอกสารแนะนำ `DEPLOY_PATH_PRD=/opt/dtrs-app`
+- **CI `transfer:prd:images`**: ตรวจพื้นที่ว่างบน `$DEPLOY_PATH` (≥ ~3 GiB) ก่อน `scp` image tar — กัน fail แบบ `scp: write remote … Failure` เมื่อ `/home` เต็ม; เอกสารแนะนำ `DEPLOY_PATH_PRD=/opt/dtrs-app` *(obsolete หลังย้าย registry — job ถูกลบ)*
 
 ---
 

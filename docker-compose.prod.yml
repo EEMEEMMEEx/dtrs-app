@@ -1,12 +1,11 @@
 # Production deploy (GitLab CI → nurdin@192.168.0.128)
-# ใช้ image ที่ transfer แล้ว — ไม่ build บน PRD
+# Image มาจาก private registry (pull + retag ชื่อสั้นบน host) — ไม่ build / ไม่ transfer tar บน PRD
 #
-# CI: scp ไฟล์นี้ไป $DEPLOY_PATH_PRD แล้ว
-#   export BACKEND_IMAGE=... FRONTEND_IMAGE=... + กลุ่ม A/B env
+# CI: docker pull ${REGISTRY_URL}/dtrs-app/dtrs-app-*:latest-prd → tag เป็น dtrs-app-*:latest-prd
+#   แล้ว scp ไฟล์นี้ไป $DEPLOY_PATH_PRD + export BACKEND_IMAGE/FRONTEND_IMAGE + กลุ่ม A/B
 #   docker compose -f docker-compose.prod.yml up -d
 #
-# DEPLOY_PATH_PRD ตั้งใน GitLab (กลุ่ม D) — ต้องอยู่บน filesystem ที่มีที่ว่างพอ
-# สำหรับ scp image tar (~1GB+); อย่าใช้ /home ที่พาร์ติชันเล็ก/เต็ม (แนะนำ /opt/dtrs-app)
+# DEPLOY_PATH_PRD (กลุ่ม D) — เก็บ compose file เท่านั้น (ไม่ต้องพื้นที่ ~3 GiB สำหรับ image tar)
 #
 # ห้าม commit secrets — ค่าส่งจาก GitLab Variables ตอน deploy เท่านั้น
 # Local check: docker compose -f docker-compose.prod.yml config

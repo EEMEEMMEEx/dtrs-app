@@ -80,13 +80,13 @@
 
 | ☐ | Variable | Scope แนะนำ | ค่าตัวอย่าง | validate |
 |---|----------|-------------|-------------|----------|
-| ☐ | `DOCKER_HOST_BUILD` | `*` (all) หรือ staging+production | `tcp://192.168.0.115:2375` | ✅ `docker_build:*` / `transfer:prd` |
+| ☐ | `DOCKER_HOST_BUILD` | `*` (all) หรือ staging+production | `tcp://192.168.0.115:2375` | ✅ `docker_build:*` (push registry) |
 | ☐ | `DOCKER_HOST_UAT` | `staging` | `tcp://192.168.0.115:2375` | ✅ deploy/cleanup UAT |
-| ☐ | `DOCKER_HOST_PRD` | `production` | `tcp://192.168.0.128:2375` | ✅ transfer/deploy/cleanup PRD |
+| ☐ | `DOCKER_HOST_PRD` | `production` | `tcp://192.168.0.128:2375` | ✅ deploy/cleanup PRD (pull) |
 | ☐ | `DEPLOY_SERVER_UAT` | `staging` | `nurdin@192.168.0.115` | ✅ |
 | ☐ | `DEPLOY_PATH_UAT` | `staging` | `/home/nurdin/dtrs-app` | ✅ |
 | ☐ | `DEPLOY_SERVER_PRD` | `production` | `nurdin@192.168.0.128` | ✅ |
-| ☐ | `DEPLOY_PATH_PRD` | `production` | **`/opt/dtrs-app`** (อย่าใช้ `/home/...` ถ้าพาร์ติชัน `/home` เล็ก — `.128` เคยเต็มแล้ว `scp` fail) | ✅ |
+| ☐ | `DEPLOY_PATH_PRD` | `production` | **`/opt/dtrs-app`** หรือ `/var/tmp/dtrs-app` — เก็บแค่ `docker-compose.prod.yml` (ไม่ต้อง ~3 GiB สำหรับ image tar อีกแล้ว) | ✅ |
 
 ### กลุ่ม D2 — ยังอยู่ใน `.gitlab-ci.yml` (override ได้ถ้าต้องการ)
 
@@ -99,6 +99,31 @@
 | `API_INTERNAL_BASE_URL` | `http://dtrs-app-backend:4100/api` |
 | `BACKEND_CPUS` / `BACKEND_MEMORY` / `BACKEND_PIDS_LIMIT` | resource limits |
 | `FRONTEND_CPUS` / `FRONTEND_MEMORY` / `FRONTEND_PIDS_LIMIT` | resource limits |
+
+---
+
+## กลุ่ม E — Private Docker Registry (บังคับก่อน `docker_build:*` / `deploy:*:docker`)
+
+> Pipeline validate: `.validate_registry` — **บังคับแค่ `REGISTRY_URL`** · `REGISTRY_USER` / `REGISTRY_PASSWORD` **optional** (ว่าง = ข้าม `docker login` — registry LAN ไม่บังคับ auth)  
+> Image path: `${REGISTRY_URL}/dtrs-app/dtrs-app-backend|frontend:<tag>` · helper: [`scripts/ci-registry.sh`](../scripts/ci-registry.sh)  
+> **ไม่มี** job `transfer:prd:images` แล้ว — push ตอน build · pull+retag ตอน deploy
+
+| ☐ | Variable | Scope แนะนำ | Flags | ค่าตัวอย่าง | จำเป็น? |
+|---|----------|-------------|-------|-------------|--------|
+| ☐ | `REGISTRY_URL` | `*` (all) หรือ staging+production | Visible · Protect ได้ถ้า branch protect แล้ว · **ไม่ Masked** (มี `:`) | `registry-it.forth.co.th:5000` | **ใช่** |
+| ☐ | `REGISTRY_USER` | เหมือนด้านบน | Visible หรือ Masked · Protect ตามต้องการ | user/token จาก IT | ไม่ — ใส่เมื่อได้ 401 |
+| ☐ | `REGISTRY_PASSWORD` | เหมือนด้านบน | **Masked** · Protect | `***` | ไม่ — ใส่คู่กับ USER เมื่อได้ 401 |
+
+### Host gate (นอก GitLab — บังคับก่อน cutover)
+
+| ☐ | รายการ |
+|---|--------|
+| ☐ | Docker daemon บน **`.115`** (build + UAT) มี `insecure-registries` รวม `registry-it.forth.co.th:5000` (และ IP ของ registry ถ้าใช้) |
+| ☐ | Docker daemon บน **`.128`** (PRD pull) มี `insecure-registries` ชุดเดียวกัน |
+| ☐ | Namespace / path `dtrs-app` ใน registry ใช้ push ได้ (ลองมือหรือรัน `docker_build:uat`) |
+| ☐ | ถ้า push/pull ได้ **401** → ขอ credential จาก IT แล้วตั้ง `REGISTRY_USER` + `REGISTRY_PASSWORD` (ไม่ต้องแก้โค้ด) |
+
+**ลำดับกด job หลังมีกลุ่ม E:** `docker_build:uat|prd` (build+push) → `deploy:*:docker` (pull+retag → run/compose) → smoke · **ไม่มี** `transfer`
 
 ---
 
@@ -153,7 +178,7 @@
 - [ ] **PRD:** `npx prisma migrate deploy` กับ `@192.168.0.126:3306/dtrs_app` ก่อน deploy — ต้องมี `YES, MIGRATE production @192.168.0.126/dtrs_app`
 - [ ] seed-admin บน DB PRD ก่อนทดสอบ login
 
-**ลำดับก่อนกด deploy PRD:** กลุ่ม A (ยกเว้น SSH) → MinIO bucket/keys → NPM+DNS → SSH key → migrate+YES → manual `docker_build:prd` → `transfer` → `deploy`+YES → smoke
+**ลำดับก่อนกด deploy PRD:** กลุ่ม A (ยกเว้น SSH) → กลุ่ม E (`REGISTRY_URL` + insecure-registries) → MinIO bucket/keys → NPM+DNS → SSH key → migrate+YES → manual `docker_build:prd` → `deploy`+YES → smoke
 
 ### 2) กลุ่ม B MinIO — ✅ host ร่วม · แยก bucket (อัปเดต 2026-10-26)
 

@@ -16,13 +16,13 @@
 | Environment | **UAT + PRD** ✅ | **UAT + PRD** |
 | Branch | **`staging`** + **`main`/`master`** ✅ | **`staging`** (UAT), **`main`/`master`** (PRD) |
 | Deploy | **UAT:** `docker run` · **PRD:** `docker compose` (`docker-compose.prod.yml`) ✅ | UAT คง `docker run`; PRD ใช้ compose (2026-10-26) |
-| Build image PRD | Build **`.115`** → transfer → **`.128`** ✅ | Build บน **`.115`** → `save`/`scp`/`load` → **`.128`** |
-| Build image UAT | Build **`.115`**, deploy **`.115`** ✅ | Build บน **`.115`**, deploy **`nurdin@192.168.0.115`** |
+| Build image PRD | Build **`.115`** → **push registry** → deploy **`.128` pull** ✅ | ไม่ใช้ `save`/`scp`/`load` |
+| Build image UAT | Build **`.115`** → **push** → deploy **`.115` pull+retag** ✅ | Build บน **`.115`**, deploy **`nurdin@192.168.0.115`** |
 | Test stage | **`test:frontend` + `test:backend`** ✅ | **`test:frontend` (lint)** + **`test:backend` (eslint ห้าม `--fix` + jest)** — fail = pipeline หยุด |
-| Deploy env gate | **`.deploy_ssh_and_validate`** ✅ | ตรวจกลุ่ม A ก่อน manual deploy |
+| Deploy env gate | **`.deploy_ssh_and_validate`** ✅ | ตรวจกลุ่ม A + **กลุ่ม E (`REGISTRY_URL`)** ก่อน manual deploy |
 | Deploy health | **`docker inspect` Running** ✅ | หลัง `docker run -d` ถ้า container ตาย → job fail + `docker logs` |
-| PRD `docker load` | **`DOCKER_HOST_PRD`** บน `.128` ✅ | ใช้ daemon เดียวกับ deploy (ไม่ load ลง local socket โดยพลาด) |
-| Cleanup `needs` | **ไม่รอ manual deploy** ✅ | UAT `needs: docker_build:uat` · PRD `needs: transfer:prd:images` |
+| Registry | **`REGISTRY_URL`** + [`scripts/ci-registry.sh`](../scripts/ci-registry.sh) ✅ | push ตอน build · pull+retag ตอน deploy · USER/PASSWORD optional |
+| Cleanup `needs` | **ไม่รอ manual deploy** ✅ | UAT/PRD `needs: docker_build:*` |
 | Runner tags | `docker` + `forth` ✅ | **`docker` + `forth`** |
 | Rollback / Slack | ไม่มี | **ยังไม่เอารอบแรก** |
 
@@ -35,7 +35,7 @@
 | | EAS/EMS | dtrs-app |
 |--|---------|----------|
 | สถาปัตยกรรม | Frontend 1 container | **Backend + Frontend** 2 containers |
-| Deploy | `docker compose` + ไฟล์แยก env | **UAT:** `docker run` · **PRD:** `docker-compose.prod.yml` (image จาก transfer) |
+| Deploy | `docker compose` + ไฟล์แยก env | **UAT:** `docker run` · **PRD:** `docker-compose.prod.yml` (image จาก registry pull+retag) |
 | Env ใน CI | DEV + UAT + PROD | **UAT + PRD** (ไม่มี DEV) |
 | Image ต่อ deploy | 1 image | **2 images** (`dtrs-app-backend`, `dtrs-app-frontend`) |
 | Backend env ใน deploy | ไม่มี (เรียก Portal API ภายนอก) | `DATABASE_URL`, JWT, MinIO, CORS, … ผ่าน `-e` |
@@ -67,7 +67,7 @@
 | GitLab Environment | `production` |
 | Deploy SSH | **`nurdin@192.168.0.128`** |
 | Deploy path | **`/home/nurdin/dtrs-app`** ✅ |
-| Docker build host | **`tcp://192.168.0.115:2375`** (build) → transfer → load บน `.128` |
+| Docker build host | **`tcp://192.168.0.115:2375`** (build+push) → deploy pull บน `.128` (`DOCKER_HOST_PRD`) |
 | Host ports | **8404→3000**, **8405→4100** ✅ ([Migration P0 #9–10](./DTRS-Migration-Checklist.md#พอร์ต-host-ถ้ารันคู่กับ-prd-เดิมบนเครื่องเดียวกัน)) |
 | Domain | **`https://dtrs-app.forth.co.th`** ✅ |
 | MySQL | host **`192.168.0.126`**, db **`dtrs_app`** (grilling #3) |
@@ -116,18 +116,17 @@ flowchart TD
   subgraph staging [branch staging]
     T1[test:frontend + test:backend]
     B1[build:frontend + build:backend]
-    DB1[docker_build:uat]
-    D1["deploy:uat:docker (MANUAL)"]
+    DB1["docker_build:uat (push registry)"]
+    D1["deploy:uat:docker pull+retag (MANUAL)"]
     T1 --> B1 --> DB1 --> D1
   end
 
   subgraph main [branch main/master]
     T2[test:frontend + test:backend]
     B2[build:frontend + build:backend]
-    DB2[docker_build:prd]
-    XF["save/scp/load 2 images .115 → .128"]
-    D2["deploy:prd:docker (MANUAL)"]
-    T2 --> B2 --> DB2 --> XF --> D2
+    DB2["docker_build:prd (push registry)"]
+    D2["deploy:prd:docker pull+retag + compose (MANUAL)"]
+    T2 --> B2 --> DB2 --> D2
   end
 ```
 
@@ -140,13 +139,14 @@ flowchart TD
 | `build:frontend` | build | `staging`, `main`, `master` | ไม่ | artifacts = `.next/standalone` + `.next/static` + `public` (ไม่ส่ง `.next/cache`) |
 | `build:backend` | build | `staging`, `main`, `master` | ไม่ | ขยายจาก PRD-only ปัจจุบัน |
 | `deploy:summary` | deploy | ทั้งสองกลุ่ม branch | ไม่ | รายงานสั้น ๆ (optional) |
-| `docker_build:uat` | deploy_docker | `staging` | **ใช่** | build 2 images บน `.115` — **manual** |
-| `deploy:uat:docker` | deploy_docker | `staging` | **ใช่** | `docker run` บน `.115` — **manual** · extends **`.deploy_ssh_and_validate`** · ตรวจ container Running หลัง sleep 5s |
-| `docker_build:prd` | deploy_docker | `main`, `master` | **ใช่** | build 2 images บน `.115` — **manual** |
-| `transfer:prd:images` | deploy_docker | `main`, `master` | **ใช่** | `docker save` ×2 → scp → **`DOCKER_HOST_PRD` + `docker load`** บน `.128` · verify images ด้วย `export DOCKER_HOST` — **manual** |
-| `deploy:prd:docker` | deploy_docker | `main`, `master` | **ใช่** | scp `docker-compose.prod.yml` + `compose up` บน `.128` — **manual** · validate กลุ่ม A · ตรวจ container Running |
+| `docker_build:uat` | deploy_docker | `staging` | **ใช่** | build 2 images บน `.115` + **push registry** — **manual** |
+| `deploy:uat:docker` | deploy_docker | `staging` | **ใช่** | **pull+retag** แล้ว `docker run` บน `.115` — **manual** · กลุ่ม A+E · ตรวจ Running |
+| `docker_build:prd` | deploy_docker | `main`, `master` | **ใช่** | build 2 images บน `.115` + **push registry** — **manual** |
+| `deploy:prd:docker` | deploy_docker | `main`, `master` | **ใช่** | **pull+retag** + scp compose + `compose up` บน `.128` — **manual** · `needs: docker_build:prd` |
 | `cleanup:docker:uat` | cleanup | `staging` | ใช่ | `needs: docker_build:uat` — ไม่ต้องรอ manual deploy |
-| `cleanup:docker:prd` | cleanup | `main`, `master` | ใช่ | `needs: transfer:prd:images` |
+| `cleanup:docker:prd` | cleanup | `main`, `master` | ใช่ | `needs: docker_build:prd` |
+
+> **Removed (2026-10-27):** job `transfer:prd:images` (`docker save` / scp / `docker load`) — แทนด้วย registry push/pull
 
 ### Deploy script pattern (คงจาก CI ปัจจุบัน)
 
@@ -183,24 +183,22 @@ Template **`.validate_deploy_env`** + **`.deploy_ssh_and_validate`** (extends `.
 
 ---
 
-## PRD: Image transfer (.115 → .128)
-
-แนวทางจาก EAS PROD — ปรับให้ **2 images**:
+## PRD / UAT: Private registry (แทน transfer)
 
 ```text
-Runner (.115, DOCKER_HOST=115:2375)
-  → docker build dtrs-app-backend, dtrs-app-frontend
-  → docker save backend.tar, frontend.tar
-  → scp → nurdin@192.168.0.128:/home/nurdin/dtrs-app/
-  → ssh "DOCKER_HOST=tcp://192.168.0.128:2375 docker load" ×2 บน .128
-  → deploy:prd:docker (manual) ใช้ :latest-prd / :prd-latest
+Runner → DOCKER_HOST_BUILD (.115)
+  → docker build + tag ชื่อสั้น (dtrs-app-*:uat-latest|latest-prd)
+  → docker tag/push ${REGISTRY_URL}/dtrs-app/dtrs-app-*:…
+deploy:* → DOCKER_HOST_UAT|PRD
+  → docker pull registry… → docker tag ชื่อสั้น
+  → SSH: docker run (UAT) / compose up (PRD)
 ```
 
-**สำคัญ:** บน PRD host daemon ฟัง TCP **`:2375`** — คำสั่ง `docker load` ต้องตั้ง **`DOCKER_HOST_PRD`** (`DOCKER_HOST_REMOTE` ใน job) เหมือน deploy มิฉะนั้น image อาจโหลดเข้า local socket ผิด daemon
+**Host gate:** `insecure-registries` รวมค่าใน `REGISTRY_URL` บน `.115` และ `.128`  
+**Auth:** `REGISTRY_USER`/`PASSWORD` optional — ว่าง = anonymous · 401 → ตั้ง credential  
+**Rollback:** revert commit CI ที่ตัด `transfer:prd:images` (ไม่มี dual-path ใน YAML)
 
-**เหตุผล:** แยก build server กับ production host — สอดคล้อง infra EAS; ลดการ build บน daemon PRD โดยตรง
-
-**หมายเหตุ sync migration:** [P0 #14](./DTRS-Migration-Checklist.md#deploy-path--ssh) — build ที่ `.115` แล้ว transfer ✅ implement แล้ว
+**หมายเหตุ sync migration:** [P0 #14](./DTRS-Migration-Checklist.md#deploy-path--ssh) — registry push/pull ✅ (ตัด transfer 2026-10-27)
 
 ---
 
