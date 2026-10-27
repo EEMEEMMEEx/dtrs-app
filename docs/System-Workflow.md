@@ -466,8 +466,8 @@ Flow เต็มอยู่ที่ [`GitLab-CI-Plan.md`](./GitLab-CI-Plan.md
 
 สรุปสั้น:
 
-- Branch **`staging`** → build/test → manual Docker UAT บน `.115`
-- Branch **`main`/`master`** → build → docker build บน `.115` → transfer → manual deploy PRD `.128`
+- Branch **`staging`** → build/test → `docker_build:uat` (push registry) → manual deploy UAT บน `.115` (pull+retag)
+- Branch **`main`/`master`** → build → `docker_build:prd` บน `.115` (push registry) → manual deploy PRD `.128` (pull+retag → compose)
 - Containers: `dtrs-app-frontend` / `dtrs-app-backend`, network `dtrs-app-net`, ports **8404/8405**
 
 ---

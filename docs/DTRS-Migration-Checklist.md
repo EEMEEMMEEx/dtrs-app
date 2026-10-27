@@ -31,7 +31,7 @@
 | P9 UAT smoke HTTP | ✅ 2026-10-26 | `scripts/docker-regression-smoke.sh` ผ่านบน `.115:8404` / `:8405` |
 | P9 CI deploy PRD | ☐ | หลัง Variables + NPM + SSH + migrate YES + deploy YES |
 
-**ขั้นถัดไป (PRD):** ใส่กลุ่ม A production ให้ครบ → รอ infra MinIO → NPM/DNS → SSH `.128` → `YES, MIGRATE production @192.168.0.126/dtrs_app` → manual `docker_build` / `transfer` / `YES, DEPLOY production @192.168.0.128`
+**ขั้นถัดไป (PRD):** ใส่กลุ่ม A production ให้ครบ → กลุ่ม E (`REGISTRY_URL` + insecure-registries) → NPM/DNS → SSH `.128` → `YES, MIGRATE production @192.168.0.126/dtrs_app` → manual `docker_build:prd` / `YES, DEPLOY production @192.168.0.128`
 
 ---
 
@@ -103,7 +103,7 @@
 | 13 | SSH user / host PRD | — | **`nurdin@192.168.0.128`** | `.gitlab-ci.yml` | ✅ |
 | 13b | SSH user / host UAT | — | `nurdin@192.168.0.115` | `.gitlab-ci.yml` | ✅ SSH ทดสอบผ่าน |
 | 13c | SSH key UAT | — | `SSH_PRIVATE_KEY` scope `staging` = คู่ `dtrs-app-uat` · public **append** ใน `authorized_keys` | GitLab + `.115` | ✅ UAT · ☐ PRD |
-| 14 | Docker build / deploy PRD | — | build `.115` → `transfer:prd:images` (`DOCKER_HOST_PRD` + load) → deploy `.128` | `.gitlab-ci.yml` | ✅ implement |
+| 14 | Docker build / deploy PRD | — | build `.115` → **push registry** → deploy `.128` **pull+retag** + compose | `.gitlab-ci.yml` | ✅ registry (ตัด transfer 2026-10-27) |
 | 14b | MySQL UAT | — | host **`192.168.0.11`**, db **`dtrs_app`** | [`GitLab-CI-Plan.md`](./GitLab-CI-Plan.md) | ✅ grilling |
 | 14c | MySQL PRD | — | host **`192.168.0.126`**, db **`dtrs_app`** | GitLab Variables | ✅ grilling |
 
@@ -285,7 +285,7 @@
 
 **PRD (`.128`, manual deploy)**
 
-- [ ] Pipeline `FORTH/dtrs-app` build ผ่าน (รวม image transfer `.115` → `.128` ผ่าน `DOCKER_HOST_PRD`)
+- [ ] Pipeline `FORTH/dtrs-app` build ผ่าน (รวม registry push จาก `.115` + pull บน `.128`)
 - [ ] Image tag เป็น `dtrs-app-backend` / `dtrs-app-frontend`
 - [ ] Manual deploy สร้าง container/network ใหม่ — **ไม่** stop container ของ `cctv-app_ticket`
 - [ ] `GET /api/health` หรือ endpoint ทดสอบบน PRD ใหม่
