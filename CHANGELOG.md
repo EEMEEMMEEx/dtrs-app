@@ -49,7 +49,7 @@ npm install
 
 ### Fixed
 
-- **CI smoke หลัง deploy**: `scripts/docker-regression-smoke.sh` รอ HTTP พร้อม (retry) ก่อน TC-FE-01 — ลด fail `000` เมื่อ container Running แต่แอปยังไม่รับ request; แก้การรวมรหัส `000000` จาก `curl -f` + `|| echo 000`
+- **CI smoke หลัง deploy**: `scripts/docker-regression-smoke.sh` รอ HTTP พร้อม + **retry ทุก TC** (ไม่ใช่แค่ขั้น ready) — ลด flake `000` จาก runner↔host กระตุกหลังแอปตอบ 200 แล้ว; แก้การรวมรหัส `000000` จาก `curl -f` + `|| echo 000`
 
 ### Changed
 
