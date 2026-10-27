@@ -47,6 +47,10 @@ npm install
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI smoke หลัง deploy**: `scripts/docker-regression-smoke.sh` รอ HTTP พร้อม (retry) ก่อน TC-FE-01 — ลด fail `000` เมื่อ container Running แต่แอปยังไม่รับ request; แก้การรวมรหัส `000000` จาก `curl -f` + `|| echo 000`
+
 ### Changed
 
 - **CI deploy host/path ไม่ hardcode ใน YAML**: `DOCKER_HOST_*` / `DEPLOY_SERVER_*` / `DEPLOY_PATH_*` ต้องตั้งใน GitLab CI/CD Variables (กลุ่ม D); pipeline validate ก่อน build/SSH/deploy — ดู `docs/GitLab-CI-Variables-Checklist.md`
