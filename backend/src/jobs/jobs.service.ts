@@ -28,6 +28,7 @@ import {
   formatRequestOocTicketNo,
   formatOocDocTicketNo,
   isFormalDocTicketNo,
+  parseTicketSequence,
 } from './doc-ticket-no';
 import axios from 'axios';
 
@@ -1320,29 +1321,95 @@ export class JobsService implements OnModuleInit {
     });
   }
 
+  /**
+   * ถอยตัวนับใน DocSequence ลง 1 ลำดับ หากหมายเลขของงานที่ถูกลบเป็นลำดับล่าสุด (latest sequence)
+   */
+  private async rollbackSequenceIfLatest(
+    tx: Prisma.TransactionClient,
+    ticketNo: string | null | undefined,
+  ): Promise<boolean> {
+    const parsed = parseTicketSequence(ticketNo);
+    if (!parsed) return false;
+
+    const { kind, period, running } = parsed;
+
+    if (typeof (tx as any).$queryRaw === 'function') {
+      const locked = await (tx as any).$queryRaw<
+        Array<{ lastValue: number | bigint }>
+      >`
+        SELECT \`lastValue\` FROM \`DocSequence\`
+        WHERE \`kind\` = ${kind} AND \`period\` = ${period}
+        FOR UPDATE
+      `;
+      const current = Number(locked[0]?.lastValue ?? 0);
+      if (current === running) {
+        const prev = Math.max(0, running - 1);
+        await (tx as any).$executeRaw`
+          UPDATE \`DocSequence\`
+          SET \`lastValue\` = ${prev}, \`updatedAt\` = NOW(3)
+          WHERE \`kind\` = ${kind} AND \`period\` = ${period}
+        `;
+        this.logger.log(
+          `Rolled back DocSequence (${kind}, '${period}'): ${current} -> ${prev} due to deletion of ${ticketNo}`,
+        );
+        return true;
+      }
+    } else if (typeof (tx as any).docSequence?.findUnique === 'function') {
+      const row = await (tx as any).docSequence.findUnique({
+        where: { kind_period: { kind, period } },
+        select: { lastValue: true },
+      });
+      const current = Number(row?.lastValue ?? 0);
+      if (current === running) {
+        const prev = Math.max(0, running - 1);
+        await (tx as any).docSequence.update({
+          where: { kind_period: { kind, period } },
+          data: { lastValue: prev },
+        });
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** ลบงานที่ยังไม่มีผู้รับผิดชอบ (assignedToId = null) และสถานะต้องเป็น PENDING เท่านั้น */
   async deleteUnassignedJob(id: number) {
-    const job = await this.prisma.job.findUnique({
-      where: { id },
-      select: { id: true, status: true, assignedToId: true },
+    return this.runInTransaction(async (tx) => {
+      const job = await tx.job.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          status: true,
+          assignedToId: true,
+          requestTicketNo: true,
+          ticketNo: true,
+        },
+      });
+
+      if (!job) throw new NotFoundException(`ไม่พบ Job id=${id}`);
+
+      if (job.status !== JobStatus.PENDING) {
+        throw new BadRequestException(
+          'อนุญาตให้ลบได้เฉพาะงานสถานะ PENDING เท่านั้น',
+        );
+      }
+
+      if (job.assignedToId != null) {
+        throw new BadRequestException(
+          'อนุญาตให้ลบได้เฉพาะงานที่ยังไม่มีผู้รับผิดชอบ',
+        );
+      }
+
+      if (job.requestTicketNo) {
+        await this.rollbackSequenceIfLatest(tx, job.requestTicketNo);
+      }
+      if (job.ticketNo) {
+        await this.rollbackSequenceIfLatest(tx, job.ticketNo);
+      }
+
+      await tx.job.delete({ where: { id } });
+      return { ok: true };
     });
-
-    if (!job) throw new NotFoundException(`ไม่พบ Job id=${id}`);
-
-    if (job.status !== JobStatus.PENDING) {
-      throw new BadRequestException(
-        'อนุญาตให้ลบได้เฉพาะงานสถานะ PENDING เท่านั้น',
-      );
-    }
-
-    if (job.assignedToId != null) {
-      throw new BadRequestException(
-        'อนุญาตให้ลบได้เฉพาะงานที่ยังไม่มีผู้รับผิดชอบ',
-      );
-    }
-
-    await this.prisma.job.delete({ where: { id } });
-    return { ok: true };
   }
 
   /**
@@ -1350,16 +1417,31 @@ export class JobsService implements OnModuleInit {
    * คืน true ถ้าลบแล้ว, false ถ้าไม่ใช่ IN_PROGRESS (ให้ fallback ไปลบแบบยังไม่มอบหมาย)
    */
   async tryDeleteInProgressJobByAdmin(id: number): Promise<boolean> {
-    const job = await this.prisma.job.findUnique({
-      where: { id },
-      select: { id: true, status: true },
+    return this.runInTransaction(async (tx) => {
+      const job = await tx.job.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          status: true,
+          requestTicketNo: true,
+          ticketNo: true,
+        },
+      });
+      if (!job) throw new NotFoundException(`ไม่พบ Job id=${id}`);
+      // เทียบแบบ string รองรับทั้ง Prisma enum และค่าจาก DB
+      const st = String(job.status ?? '').toUpperCase();
+      if (st !== String(JobStatus.IN_PROGRESS)) return false;
+
+      if (job.requestTicketNo) {
+        await this.rollbackSequenceIfLatest(tx, job.requestTicketNo);
+      }
+      if (job.ticketNo) {
+        await this.rollbackSequenceIfLatest(tx, job.ticketNo);
+      }
+
+      await tx.job.delete({ where: { id } });
+      return true;
     });
-    if (!job) throw new NotFoundException(`ไม่พบ Job id=${id}`);
-    // เทียบแบบ string รองรับทั้ง Prisma enum และค่าจาก DB
-    const st = String(job.status ?? '').toUpperCase();
-    if (st !== String(JobStatus.IN_PROGRESS)) return false;
-    await this.prisma.job.delete({ where: { id } });
-    return true;
   }
 
   /** YYYY ตาม Asia/Bangkok */

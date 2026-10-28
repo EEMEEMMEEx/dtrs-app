@@ -10,6 +10,7 @@ import {
   isRequestTicketNo,
   isRequestOocTicketNo,
   isAnyRequestTicketNo,
+  parseTicketSequence,
 } from './doc-ticket-no';
 
 describe('doc-ticket-no (Meeting Phase C & Redesign)', () => {
@@ -181,6 +182,69 @@ describe('doc-ticket-no (Meeting Phase C & Redesign)', () => {
       expect(isAnyRequestTicketNo('CM-SHF-2026-0001')).toBe(false);
       expect(isAnyRequestTicketNo('OOC-2026-0001')).toBe(false);
       expect(isAnyRequestTicketNo('9530f95f')).toBe(false);
+    });
+  });
+
+  describe('parseTicketSequence', () => {
+    it('parses RQ-CM-YYYYXXXX correctly', () => {
+      expect(parseTicketSequence('RQ-CM-20260003')).toEqual({
+        kind: 'RQ_CM',
+        period: '2026',
+        running: 3,
+      });
+      expect(parseTicketSequence('RQ-CM-202610000')).toEqual({
+        kind: 'RQ_CM',
+        period: '2026',
+        running: 10000,
+      });
+    });
+
+    it('parses RQ-OOC-YYYYXXXX correctly', () => {
+      expect(parseTicketSequence('RQ-OOC-20260003')).toEqual({
+        kind: 'RQ_OOC',
+        period: '2026',
+        running: 3,
+      });
+      expect(parseTicketSequence('RQ-OOC-20260042')).toEqual({
+        kind: 'RQ_OOC',
+        period: '2026',
+        running: 42,
+      });
+    });
+
+    it('parses in-contract CM-SHF-YYYY-XXXX correctly (period is empty string)', () => {
+      expect(parseTicketSequence('CM-SHF-2026-0003')).toEqual({
+        kind: 'IN_CONTRACT',
+        period: '',
+        running: 3,
+      });
+      expect(parseTicketSequence('CM-SHF-2002-0042')).toEqual({
+        kind: 'IN_CONTRACT',
+        period: '',
+        running: 42,
+      });
+    });
+
+    it('parses out-of-contract OOC-YYYY-XXXX correctly', () => {
+      expect(parseTicketSequence('OOC-2026-0003')).toEqual({
+        kind: 'OOC_DOC',
+        period: '2026',
+        running: 3,
+      });
+      expect(parseTicketSequence('OOC-2026-0001')).toEqual({
+        kind: 'OOC_DOC',
+        period: '2026',
+        running: 1,
+      });
+    });
+
+    it('returns null for invalid inputs', () => {
+      expect(parseTicketSequence(null)).toBeNull();
+      expect(parseTicketSequence(undefined)).toBeNull();
+      expect(parseTicketSequence('')).toBeNull();
+      expect(parseTicketSequence('   ')).toBeNull();
+      expect(parseTicketSequence('9530f95f')).toBeNull();
+      expect(parseTicketSequence('UNKNOWN-123')).toBeNull();
     });
   });
 });

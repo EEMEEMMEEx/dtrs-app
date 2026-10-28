@@ -19,9 +19,10 @@
 
 workflow:
   rules:
-    - if: '$CI_COMMIT_BRANCH =~ /^feat\/.*$/'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
       when: never
-    - when: always
+    - if: '$CI_COMMIT_BRANCH'
 
 stages:
   - test
@@ -143,6 +144,12 @@ variables:
     - !reference [.validate_deploy_targets, before_script]
     - !reference [.validate_registry, before_script]
 
+# Rules for running test jobs: on Merge Requests, feature/bugfix branches, and deploy branches
+.rules_ci_test:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
 .rules_ci_branches:
   rules:
     - if: '$CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
@@ -215,7 +222,7 @@ test:frontend:
   stage: test
   extends:
     - .runner_docker
-    - .rules_ci_branches
+    - .rules_ci_test
   image: node:${NODE_VERSION}
   cache:
     key: ${CI_COMMIT_REF_SLUG}-frontend-test
@@ -225,12 +232,13 @@ test:frontend:
     - cd frontend
     - npm ci --prefer-offline --no-audit
     - npm run lint -- .
+    - npm test
 
 test:backend:
   stage: test
   extends:
     - .runner_docker
-    - .rules_ci_branches
+    - .rules_ci_test
   image: node:${NODE_VERSION}
   cache:
     key: ${CI_COMMIT_REF_SLUG}-backend-test

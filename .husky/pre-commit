@@ -1,3 +1,7 @@
 #!/usr/bin/env sh
 # When CHANGELOG.md is staged: prompt major|minor|patch|skip (or CHANGELOG_VERSION_BUMP).
 node scripts/changelog-version-bump.mjs
+
+# Pre-commit lint checks to catch errors locally before pushing to CI
+(cd backend && npm run lint) || exit 1
+(cd frontend && npm run lint -- .) || exit 1
