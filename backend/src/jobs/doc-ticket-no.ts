@@ -159,3 +159,55 @@ export function bangkokYearMonth(now: Date = new Date()): string {
   const m = parts.find((p) => p.type === 'month')?.value ?? '01';
   return `${y}${m}`;
 }
+
+export interface ParsedTicketSequence {
+  kind: 'RQ_CM' | 'RQ_OOC' | 'IN_CONTRACT' | 'OOC_DOC';
+  period: string;
+  running: number;
+}
+
+export const PARSE_RQ_CM_RE = /^RQ-CM-(\d{4})(\d{4,})$/;
+export const PARSE_RQ_OOC_RE = /^RQ-OOC-(\d{4})(\d{4,})$/;
+export const PARSE_IN_CONTRACT_RE = /^CM-SHF-\d{4}-(\d{4,})$/;
+export const PARSE_OOC_DOC_RE = /^OOC-(\d{4})-(\d{4,})$/;
+
+/**
+ * แยกส่วนประกอบของเลขที่ตั๋ว (Request No หรือ Doc No)
+ * เพื่อใช้ในการตรวจสอบและ Rollback ใน DocSequence
+ */
+export function parseTicketSequence(
+  ticketNo: string | null | undefined,
+): ParsedTicketSequence | null {
+  const s = (ticketNo ?? '').trim();
+  if (!s) return null;
+
+  let m = PARSE_RQ_CM_RE.exec(s);
+  if (m) {
+    const running = parseInt(m[2], 10);
+    if (!Number.isFinite(running) || running < 1) return null;
+    return { kind: 'RQ_CM', period: m[1], running };
+  }
+
+  m = PARSE_RQ_OOC_RE.exec(s);
+  if (m) {
+    const running = parseInt(m[2], 10);
+    if (!Number.isFinite(running) || running < 1) return null;
+    return { kind: 'RQ_OOC', period: m[1], running };
+  }
+
+  m = PARSE_IN_CONTRACT_RE.exec(s);
+  if (m) {
+    const running = parseInt(m[1], 10);
+    if (!Number.isFinite(running) || running < 1) return null;
+    return { kind: 'IN_CONTRACT', period: '', running };
+  }
+
+  m = PARSE_OOC_DOC_RE.exec(s);
+  if (m) {
+    const running = parseInt(m[2], 10);
+    if (!Number.isFinite(running) || running < 1) return null;
+    return { kind: 'OOC_DOC', period: m[1], running };
+  }
+
+  return null;
+}

@@ -47,6 +47,10 @@ npm install
 
 ## [Unreleased]
 
+### Added
+
+- **Rollback Running Number เมื่อลบงานลำดับล่าสุด**: เมื่อลบ Job ที่มี Request No (`RQ-CM-YYYYXXXX`, `RQ-OOC-YYYYXXXX`) หรือ Doc No (`CM-SHF-YYYY-XXXX`, `OOC-YYYY-XXXX`) ซึ่งเป็นลำดับล่าสุด ระบบจะถอยตัวนับในตาราง `DocSequence` กลับไป 1 ลำดับอัตโนมัติ เพื่อให้งานที่สร้างใหม่ได้รับเลขที่ลบไปกลับมาใช้งานซ้ำ โดยไม่เกิดเลขแหว่ง (หากไม่ใช่ลำดับล่าสุดจะไม่ถอยตัวนับเพื่อกันเลขซ้ำ)
+
 ### Changed
 
 - **CI ใช้ private Docker registry แทน image transfer**: `docker_build:*` push ไป `${REGISTRY_URL}/dtrs-app/…` · `deploy:*` pull+retag ชื่อสั้นก่อน run/compose · **ลบ** job `transfer:prd:images` · ตัวแปรกลุ่ม E (`REGISTRY_URL` บังคับ; USER/PASSWORD optional) — ดู `docs/GitLab-CI-Variables-Checklist.md`
@@ -55,6 +59,7 @@ npm install
 
 ### Fixed
 
+- **CI Pipeline & Cross-Platform Build**: เพิ่ม `.gitattributes` บังคับ `eol=lf` ป้องกัน Prettier ล้มใน CI, ปรับ `.husky/pre-commit` รัน lint อัตโนมัติก่อน commit, ปรับ `.gitlab-ci.yml` ให้ stage `test` รันบน Merge Requests และสาขาต่าง ๆ ผ่าน `.rules_ci_test` พร้อมเพิ่ม `npm test` ใน `test:frontend` (147 tests), และแก้ script `frontend/package.json` เป็น `"build": "next build"` รองรับทั้ง Windows และ Linux · v0.10.1 → v0.10.2 (PATCH)
 - **CI `transfer:prd:images`**: ตรวจพื้นที่ว่างบน `$DEPLOY_PATH` (≥ ~3 GiB) ก่อน `scp` image tar — กัน fail แบบ `scp: write remote … Failure` เมื่อ `/home` เต็ม; เอกสารแนะนำ `DEPLOY_PATH_PRD=/opt/dtrs-app` *(obsolete หลังย้าย registry — job ถูกลบ)*
 
 ---

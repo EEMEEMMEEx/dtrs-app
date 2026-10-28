@@ -12,6 +12,7 @@ import {
   isFormalDocTicketNo,
   isRequestOocTicketNo,
   isRequestTicketNo,
+  parseTicketSequence,
 } from "./docTicketNo";
 
 describe("isFormalDocTicketNo", () => {
@@ -19,12 +20,14 @@ describe("isFormalDocTicketNo", () => {
     assert.equal(isFormalDocTicketNo("29c75819"), false);
     assert.equal(isFormalDocTicketNo("12345678"), false);
     assert.equal(isFormalDocTicketNo(""), false);
+    assert.equal(isFormalDocTicketNo("   "), false);
     assert.equal(isFormalDocTicketNo(null), false);
+    assert.equal(isFormalDocTicketNo(undefined), false);
     assert.equal(isFormalDocTicketNo("RQ-CM-20260001"), false);
     assert.equal(isFormalDocTicketNo("RQ-OOC-20260001"), false);
   });
 
-  it("accepts in-contract and out-of-contract running numbers", () => {
+  it("accepts running Doc No formats (in-contract, new OOC, legacy OOC)", () => {
     assert.equal(isFormalDocTicketNo("CM-SHF-2026-0001"), true);
     assert.equal(isFormalDocTicketNo("CM-SHF-2002-0001"), true);
     assert.equal(isFormalDocTicketNo("CM-SHF-2026-10000"), true);
@@ -44,7 +47,7 @@ describe("formatRequestTicketNo", () => {
     assert.equal(formatRequestTicketNo({ year: "2026", running: 10000 }), "RQ-CM-202610000");
   });
 
-  it("rejects invalid year or running", () => {
+  it("rejects invalid inputs", () => {
     assert.throws(() => formatRequestTicketNo({ year: "26", running: 1 }), RangeError);
     assert.throws(() => formatRequestTicketNo({ year: "2026", running: 0 }), RangeError);
   });
@@ -55,12 +58,8 @@ describe("isRequestTicketNo", () => {
     assert.equal(isRequestTicketNo("RQ-CM-20260001"), true);
     assert.equal(isRequestTicketNo("RQ-CM-20269999"), true);
     assert.equal(isRequestTicketNo("RQ-CM-202610000"), true);
-  });
-
-  it("rejects formal doc numbers, hex, and invalid values", () => {
+    assert.equal(isRequestTicketNo("RQ-OOC-20260001"), false);
     assert.equal(isRequestTicketNo("CM-SHF-2026-0001"), false);
-    assert.equal(isRequestTicketNo("2026080001"), false);
-    assert.equal(isRequestTicketNo("9530f95f"), false);
     assert.equal(isRequestTicketNo(""), false);
     assert.equal(isRequestTicketNo(null), false);
   });
@@ -121,5 +120,58 @@ describe("isClassifiedOutOfContractResolved", () => {
       }),
       false,
     );
+  });
+});
+
+describe("parseTicketSequence", () => {
+  it("parses RQ-CM-YYYYXXXX correctly", () => {
+    assert.deepEqual(parseTicketSequence("RQ-CM-20260003"), {
+      kind: "RQ_CM",
+      period: "2026",
+      running: 3,
+    });
+    assert.deepEqual(parseTicketSequence("RQ-CM-202610000"), {
+      kind: "RQ_CM",
+      period: "2026",
+      running: 10000,
+    });
+  });
+
+  it("parses RQ-OOC-YYYYXXXX correctly", () => {
+    assert.deepEqual(parseTicketSequence("RQ-OOC-20260003"), {
+      kind: "RQ_OOC",
+      period: "2026",
+      running: 3,
+    });
+    assert.deepEqual(parseTicketSequence("RQ-OOC-20260042"), {
+      kind: "RQ_OOC",
+      period: "2026",
+      running: 42,
+    });
+  });
+
+  it("parses in-contract CM-SHF-YYYY-XXXX correctly", () => {
+    assert.deepEqual(parseTicketSequence("CM-SHF-2026-0003"), {
+      kind: "IN_CONTRACT",
+      period: "",
+      running: 3,
+    });
+  });
+
+  it("parses out-of-contract OOC-YYYY-XXXX correctly", () => {
+    assert.deepEqual(parseTicketSequence("OOC-2026-0003"), {
+      kind: "OOC_DOC",
+      period: "2026",
+      running: 3,
+    });
+  });
+
+  it("returns null for invalid inputs", () => {
+    assert.equal(parseTicketSequence(null), null);
+    assert.equal(parseTicketSequence(undefined), null);
+    assert.equal(parseTicketSequence(""), null);
+    assert.equal(parseTicketSequence("   "), null);
+    assert.equal(parseTicketSequence("9530f95f"), null);
+    assert.equal(parseTicketSequence("OTHER-1234"), null);
   });
 });

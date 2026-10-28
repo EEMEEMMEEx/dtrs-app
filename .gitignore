@@ -20,6 +20,7 @@
 !docker-compose.yml
 !docker-compose.prod.yml
 !.dockerignore
+!.gitattributes
 !/docker/
 !/docker/**
 !/.husky/
