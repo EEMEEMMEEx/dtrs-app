@@ -49,6 +49,27 @@ npm install
 
 ### Changed
 
+- **CI ใช้ private Docker registry แทน image transfer**: `docker_build:*` push ไป `${REGISTRY_URL}/dtrs-app/…` · `deploy:*` pull+retag ชื่อสั้นก่อน run/compose · **ลบ** job `transfer:prd:images` · ตัวแปรกลุ่ม E (`REGISTRY_URL` บังคับ; USER/PASSWORD optional) — ดู `docs/GitLab-CI-Variables-Checklist.md`
+- **CI image tags เหลือคู่ละ 2 ชื่อ**: `{sha}-uat|prd` + `uat-latest`/`latest-prd` · ไม่ติด `latest-uat` / `prd-latest` / `:prd` · หลัง push/pull ลบ tag ชื่อ registry บน host (เหลือชื่อสั้น)
+- **CI cleanup จำกัดเฉพาะ `dtrs-app-*`**: แยก env · KEEP=2 · ลบ legacy local · ตัด `docker image prune -f` · PRD เคลียร์ทั้ง `.115`+`.128` · registry tag ลบมือ (ไม่ผ่าน CI)
+
+### Fixed
+
+- **CI `transfer:prd:images`**: ตรวจพื้นที่ว่างบน `$DEPLOY_PATH` (≥ ~3 GiB) ก่อน `scp` image tar — กัน fail แบบ `scp: write remote … Failure` เมื่อ `/home` เต็ม; เอกสารแนะนำ `DEPLOY_PATH_PRD=/opt/dtrs-app` *(obsolete หลังย้าย registry — job ถูกลบ)*
+
+---
+
+## [0.10.0] - 2026-10-27
+
+### Fixed
+
+- **CI smoke หลัง deploy**: `scripts/docker-regression-smoke.sh` รอ HTTP พร้อม + **retry ทุก TC** (ไม่ใช่แค่ขั้น ready) — ลด flake `000` จาก runner↔host กระตุกหลังแอปตอบ 200 แล้ว; แก้การรวมรหัส `000000` จาก `curl -f` + `|| echo 000`
+
+### Changed
+
+- **PRD CI/CD พร้อมขึ้น production**: กลุ่ม A/B/D บน GitLab (`production`) + SSH `.128` + MinIO bucket PRD ครบ; เหลือ NPM/DNS + `YES, MIGRATE` / `YES, DEPLOY` ตาม handoff
+- **CI deploy host/path ไม่ hardcode ใน YAML**: `DOCKER_HOST_*` / `DEPLOY_SERVER_*` / `DEPLOY_PATH_*` ต้องตั้งใน GitLab CI/CD Variables (กลุ่ม D); pipeline validate ก่อน build/SSH/deploy — ดู `docs/GitLab-CI-Variables-Checklist.md`
+- **Deploy PRD ใช้ `docker-compose.prod.yml`**: job `deploy:prd:docker` scp compose ไป `.128` แล้ว `docker compose up -d` ด้วย image ที่ transfer แล้ว (คงชื่อ container / พอร์ต 8404/8405 / `dtrs-app-net`); default `API_INTERNAL_BASE_URL` ใน compose = `http://backend:4100/api` + network alias `dtrs-app-backend` (รองรับค่า CI เดิม); UAT ยังเป็น `docker run`
 - **อัปเกรด Node.js เป็น 22.23.4 (LTS)**: base image ของ `frontend/Dockerfile` และ `backend/Dockerfile` ทั้งทุก stage (`builder`/`ci-runner`/`runner`) เปลี่ยนจาก `node:20-bookworm-slim` เป็น `node:22.23.4-bookworm-slim`; GitLab CI `NODE_VERSION` เป็น `22.23.4` (มีผลกับ job `test:frontend`, `test:backend`, `build:frontend`, `build:backend`) และกำหนด `engines.node` เป็น `>=22.23.4` ที่ root/`backend`/`frontend` — ไม่มีการเปลี่ยน API หรือพฤติกรรมแอป
 
 ---

@@ -31,13 +31,13 @@
 ## บันทึกการอัปเดตล่าสุด (2026-08-06)
 
 - **Frontend Light / Dark theme** — สลับโหมดจาก **Sun/Moon** ใน `SiteHeader` (`next-themes`, key `dtrs-theme`, ค่าเริ่มต้น **Dark**); tokens `--glass-*` + utilities ใน `globals.css`; `/print/*` บังคับ light ผ่าน `PrintThemeShell` (ไม่ซ้อน ThemeProvider); contrast ตาราง/ฟิลเตอร์ (JobsList, sites, roles ฯลฯ) — ดู [`CHANGELOG.md`](CHANGELOG.md) · [`frontend/README.md`](frontend/README.md) · [`AGENTS.md`](AGENTS.md)
-- **GitLab CI/CD Variables (UAT)** — กลุ่ม A scope **`staging` ✅** + กลุ่ม B **MinIO ✅** (`MINIO_PORT` / `MINIO_PUBLIC_URL` / `MINIO_SERVER_FETCH_BASE_URL` = scope **all**) · **`production` กลุ่ม A = pending** · รายละเอียด: [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md)
-- **โฟกัสถัดไป** — `prisma migrate deploy` (DB UAT) → push **`staging`** → Docker `:2375` บน `.115` → manual **`deploy:uat:docker`** → login / ทดสอบอัปโหลดรูป
+- **GitLab CI/CD Variables** — กลุ่ม A **`staging` ✅** + MinIO กลุ่ม B ✅ (host ร่วม UAT/PRD แยก bucket) · **`production` กำลังเตรียม** (SSH PRD เลื่อน · รอ infra MinIO) — [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md) §1c
+- **โฟกัสถัดไป (PRD)** — ใส่กลุ่ม A production ให้ครบ → MinIO `dtrs-app` จาก infra → NPM/DNS → SSH `.128` → migrate+YES → manual deploy+YES · UAT smoke HTTP ✅ (2026-10-26)
 - **Migration `cctv-app_ticket` → `dtrs-app`** — ดัชนี: [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md) · แผน CI: [`docs/GitLab-CI-Plan.md`](docs/GitLab-CI-Plan.md)
-- **GitLab CI/CD (UAT + PRD)** — [`.gitlab-ci.yml`](.gitlab-ci.yml): stages `test` → `build` → `deploy` → `deploy_docker` → `cleanup`; branch **`staging`** (UAT `.115`) / **`main`/`master`** (PRD `.128`); stage **`deploy_docker` ทั้งก้อน manual**; **`.deploy_ssh_and_validate`** ตรวจกลุ่ม A ก่อน deploy
+- **GitLab CI/CD (UAT + PRD)** — [`.gitlab-ci.yml`](.gitlab-ci.yml): stages `test` → `build` → `deploy` → `deploy_docker` → `cleanup`; branch **`staging`** (UAT `.115`, `docker run`) / **`main`/`master`** (PRD `.128`, **`docker-compose.prod.yml`**); stage **`deploy_docker` ทั้งก้อน manual**; **`.deploy_ssh_and_validate`** ตรวจกลุ่ม A ก่อน deploy
 - **P0 โค้ด** — Docker/CI/compose ใช้ชื่อ `dtrs-app-*`, host ports **8404/8405**, backend ภายใน container **4100**, deploy path UAT/PRD `/home/nurdin/dtrs-app`
 - **Local env** — `backend/.env.example`, `frontend/.env.example`; DB `dtrs_app`, `API_INTERNAL_BASE_URL=http://localhost:4100/api`; npm dev backend `:4100` / frontend `:3000` ผ่านแล้ว
-- **MinIO** — Variables บน GitLab ครบแล้ว; ตรวจ bucket ตาม `MINIO_BUCKET_NAME` (UAT ควร **`dtrs-app-uat`**) หลัง deploy · NPM / Variables PRD ยัง **pending**
+- **MinIO** — host เดียว UAT/PRD; bucket UAT **`dtrs-app-uat`** / PRD **`dtrs-app`**; รอ infra ใส่ keys+bucket production · NPM `dtrs-app.forth.co.th` ยัง **pending**
 
 ## บันทึกการอัปเดตล่าสุด (2026-08-05)
 

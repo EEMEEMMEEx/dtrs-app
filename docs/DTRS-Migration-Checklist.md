@@ -6,33 +6,32 @@
 
 > **Production domain:** **`https://dtrs-app.forth.co.th`** ✅ (API ที่ `/api`)
 
-**วันที่ตรวจ:** 2026-08-06 (โฟกัส UAT `staging` · `production` pending)  
+**วันที่ตรวจ:** 2026-10-26 (UAT smoke ✅ · เตรียม `production`)  
 **วิธี regenerate:** ค้นหาใน repo ด้วย pattern `cctv-app-ticket`, `cctv-app.forth`, `CCTVMaintenance`, `newbie/cctv`  
 **แผน CI (UAT+PRD):** [`GitLab-CI-Plan.md`](./GitLab-CI-Plan.md) — ✅ implement ใน [`.gitlab-ci.yml`](../.gitlab-ci.yml) (+ validate env / `DOCKER_HOST` PRD transfer 2026-08-05)
 
 ---
 
-## ความคืบหน้าล่าสุด (2026-08-06)
+## ความคืบหน้าล่าสุด (2026-10-26)
 
-> **ขอบเขตรอบนี้:** ทำเฉพาะ **UAT / scope `staging`** · Variables / deploy / NPM ของ **`production` = pending** จนกว่า UAT จะนิ่ง
+> **ขอบเขตรอบนี้:** เตรียม **PRD / scope `production`** ตาม Variables checklist §1c · **ไม่** กด migrate/deploy จนกว่าจะมี YES + SSH + NPM
 
 | ขั้น | สถานะ | หมายเหตุ |
 |------|--------|----------|
 | P0 โค้ด (Docker/CI/compose) | ✅ | ชื่อ container/image/network + พอร์ต 8404/8405 |
 | P2 local `.env` | ✅ (dev) | `backend/.env` → DB `dtrs_app`; `frontend/.env` + `.env.local` sync |
-| **MinIO GitLab Variables (กลุ่ม B)** | ✅ 2026-08-06 | `MINIO_PORT` / `PUBLIC_URL` / `SERVER_FETCH_BASE_URL` = scope **all** · อื่นๆ ตาม UI |
-| **MinIO bucket บน server** | 🟡 ตรวจหลัง deploy | ยืนยัน bucket ตาม `MINIO_BUCKET_NAME` มีจริงก่อนทดสอบอัปโหลด |
-| P2 `API_INTERNAL_BASE_URL` (local) | ✅ | `http://localhost:4100/api` เมื่อ `npm run dev` + backend บนเครื่องเดียวกัน |
-| P9 ทดสอบ local (npm) | 🟡 บางส่วน | `prisma generate`, backend `:4100`, frontend `:3000` ผ่าน — ยังไม่ยืนยัน login E2E / อัปโหลดรูป |
+| **MinIO GitLab Variables (กลุ่ม B)** | ✅ 2026-08-06 | host ร่วม UAT/PRD · `PORT` / `PUBLIC_URL` / `SERVER_FETCH` = scope **all** |
+| **MinIO bucket PRD** | 🟡 รอ infra | ชื่อตัวแปร production สร้างแล้ว · ค่า keys + `dtrs-app` รอ infra · ยืนยัน bucket บน server |
 | **แผน GitLab CI (UAT+PRD)** | ✅ implement | [`.gitlab-ci.yml`](../.gitlab-ci.yml) + [`GitLab-CI-Plan.md`](./GitLab-CI-Plan.md) |
-| P1 GitLab Variables **UAT** (`staging`) | ✅ กลุ่ม A + B | กลุ่ม A 8 ตัว + MinIO 7 ตัว — [`GitLab-CI-Variables-Checklist.md`](./GitLab-CI-Variables-Checklist.md) |
-| P1 GitLab Variables **PRD** (`production`) | ⏸️ **pending** | กลุ่ม A ยังไม่ตั้ง — ทำหลัง UAT |
-| SSH + path UAT `.115` | ✅ | `authorized_keys` append key `dtrs-app-uat` · `/home/nurdin/dtrs-app` · SSH จากเครื่อง dev ผ่าน |
-| P0 #11 NPM | ⏸️ **pending** | `dtrs-app.forth.co.th` → 8404/8405 — หลัง UAT |
-| P9 CI deploy UAT | ☐ **โฟกัสถัดไป** | ยังไม่ push `staging` / ยังไม่กด deploy · CI มี health check แล้ว |
+| P1 GitLab Variables **UAT** (`staging`) | ✅ กลุ่ม A + B | [`GitLab-CI-Variables-Checklist.md`](./GitLab-CI-Variables-Checklist.md) |
+| P1 GitLab Variables **PRD** (`production`) | 🟡 **กำลังตั้ง** | กลุ่ม A + MinIO names · SSH **เลื่อน** · รายละเอียด §1c |
+| SSH + path UAT `.115` | ✅ | key `dtrs-app-uat` · `/home/nurdin/dtrs-app` |
+| SSH + path PRD `.128` | ⏸️ **เลื่อน** | รอ `SSH_PRIVATE_KEY` production |
+| P0 #11 NPM | ⏸️ **pending** | `dtrs-app.forth.co.th` ยัง resolve ไม่ได้จาก LAN (2026-10-26) |
+| P9 UAT smoke HTTP | ✅ 2026-10-26 | `scripts/docker-regression-smoke.sh` ผ่านบน `.115:8404` / `:8405` |
+| P9 CI deploy PRD | ☐ | หลัง Variables + NPM + SSH + migrate YES + deploy YES |
 
-**ขั้นถัดไป (staging เท่านั้น):** ยืนยัน `SSH_PRIVATE_KEY` (staging) คู่ `dtrs-app-uat` → **`npx prisma migrate deploy` กับ DB UAT** → commit/push **`staging`** → ตรวจ Docker `:2375` บน `.115` → pipeline + manual **`deploy:uat:docker`** → login ที่ `http://192.168.0.115:8404` → ทดสอบอัปโหลดรูป (MinIO)  
-**ยังไม่ทำ:** Variables กลุ่ม A `production` · NPM · deploy PRD
+**ขั้นถัดไป (PRD):** ใส่กลุ่ม A production ให้ครบ → กลุ่ม E (`REGISTRY_URL` + insecure-registries) → NPM/DNS → SSH `.128` → `YES, MIGRATE production @192.168.0.126/dtrs_app` → manual `docker_build:prd` / `YES, DEPLOY production @192.168.0.128`
 
 ---
 
@@ -104,7 +103,7 @@
 | 13 | SSH user / host PRD | — | **`nurdin@192.168.0.128`** | `.gitlab-ci.yml` | ✅ |
 | 13b | SSH user / host UAT | — | `nurdin@192.168.0.115` | `.gitlab-ci.yml` | ✅ SSH ทดสอบผ่าน |
 | 13c | SSH key UAT | — | `SSH_PRIVATE_KEY` scope `staging` = คู่ `dtrs-app-uat` · public **append** ใน `authorized_keys` | GitLab + `.115` | ✅ UAT · ☐ PRD |
-| 14 | Docker build / deploy PRD | — | build `.115` → `transfer:prd:images` (`DOCKER_HOST_PRD` + load) → deploy `.128` | `.gitlab-ci.yml` | ✅ implement |
+| 14 | Docker build / deploy PRD | — | build `.115` → **push registry** → deploy `.128` **pull+retag** + compose | `.gitlab-ci.yml` | ✅ registry (ตัด transfer 2026-10-27) |
 | 14b | MySQL UAT | — | host **`192.168.0.11`**, db **`dtrs_app`** | [`GitLab-CI-Plan.md`](./GitLab-CI-Plan.md) | ✅ grilling |
 | 14c | MySQL PRD | — | host **`192.168.0.126`**, db **`dtrs_app`** | GitLab Variables | ✅ grilling |
 
@@ -286,7 +285,7 @@
 
 **PRD (`.128`, manual deploy)**
 
-- [ ] Pipeline `FORTH/dtrs-app` build ผ่าน (รวม image transfer `.115` → `.128` ผ่าน `DOCKER_HOST_PRD`)
+- [ ] Pipeline `FORTH/dtrs-app` build ผ่าน (รวม registry push จาก `.115` + pull บน `.128`)
 - [ ] Image tag เป็น `dtrs-app-backend` / `dtrs-app-frontend`
 - [ ] Manual deploy สร้าง container/network ใหม่ — **ไม่** stop container ของ `cctv-app_ticket`
 - [ ] `GET /api/health` หรือ endpoint ทดสอบบน PRD ใหม่

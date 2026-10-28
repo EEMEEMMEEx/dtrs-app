@@ -89,4 +89,16 @@
 
 ---
 
+## Checklist ตั้ง NPM สำหรับ PRD (ก่อน smoke / login โดเมน)
+
+Host เป้าหมาย: **`192.168.0.128`** · โดเมน **`https://dtrs-app.forth.co.th`**
+
+- [ ] DNS ชี้โดเมนมาที่ NPM (ตรวจ: `dig` / `curl https://dtrs-app.forth.co.th/login` จาก runner/LAN)
+- [ ] Proxy Host หลัก → `:8404` + SSL + Websockets
+- [ ] Custom locations ตามตารางด้านบน (`/api/auth`, `/api/print-jobs` → 8404; `/api/`, `/socket.io` → 8405)
+- [ ] `client_max_body_size 50m` ที่ `/api/`
+- [ ] `proxy_*_timeout` ≥ 180–300s สำหรับ PDF
+- [ ] อย่า strip `/api` ก่อนส่ง Nest
+- [ ] GitLab Variables PRD (`NEXTAUTH_URL`, `NEXT_PUBLIC_API_BASE_URL`, `FRONTEND_BASE_URL`, `ALLOWED_ORIGINS`) ตรงโดเมนนี้ **ก่อน** `build:frontend` บน `main`
+
 อัปเดตให้สอดคล้องกับ `docker-compose.yml` (8404 / 8405) และ `README.md`

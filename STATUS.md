@@ -1,8 +1,8 @@
 # Project Status - ระบบแจ้งซ่อม
 
-**วันที่อัปเดตสถานะ:** 2026-08-17
+**วันที่อัปเดตสถานะ:** 2026-10-26
 
-**Migration (`cctv-app_ticket` → `dtrs-app`):** ดู [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md) — P0 โค้ด ✅ · GitLab CI ✅ · **Variables กลุ่ม A `staging` + MinIO กลุ่ม B ✅** · **`production` กลุ่ม A / NPM = pending** · โฟกัสถัดไป = deploy UAT
+**Migration (`cctv-app_ticket` → `dtrs-app`):** ดู [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md) — P0 โค้ด ✅ · GitLab CI ✅ · **Variables กลุ่ม A `staging` + MinIO กลุ่ม B ✅** · **เตรียม `production` (2026-10-27):** กลุ่ม A/B/D + SSH `.128` + MinIO PRD ✅ · UAT smoke ✅ · **ready for production** — เหลือ NPM/DNS + `YES, MIGRATE` / `YES, DEPLOY`
 
 **ดัชนีเอกสาร:** [`README.md`](README.md) (ตารางสรุป), [`docs/README.md`](docs/README.md), [`docs/DTRS-Migration-Checklist.md`](docs/DTRS-Migration-Checklist.md), [`docs/GitLab-CI-Plan.md`](docs/GitLab-CI-Plan.md), [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md), [`docs/minio.md`](docs/minio.md), [`docs/Project-Plan-Private-MinIO-Images.md`](docs/Project-Plan-Private-MinIO-Images.md), [`docs/Job-Serial-Multi-Row.md`](docs/Job-Serial-Multi-Row.md), [`docs/Locations-Master-Seed.md`](docs/Locations-Master-Seed.md), [`docs/Sites-Import.md`](docs/Sites-Import.md), [`docs/MinIO-Orphan-Cleanup.md`](docs/MinIO-Orphan-Cleanup.md)
 
@@ -189,8 +189,8 @@ npx ts-node scripts/seed-roles-permissions.ts
 - **เทมเพลตอีเมลแจ้งงาน + Role (2026-03-24)**: `GET/PUT /settings/email-templates`, `JobEmailNotificationService`, HTML โทนสว่าง + badge สถานะ; เอกสาร flow: [`docs/Email-Notifications.md`](docs/Email-Notifications.md)
 - **UI Modal + บทบาท (2026-03-24, อัปเดตล่าสุด 2026-05-13)**: `CrudModal` — `Dialog` + portal, `z-100`, Glass ตาม theme; `/dashboard/roles` — `form-input-glass` + modal กำหนดสิทธิ์ (`size="lg"`)
 - **Deploy / CI (2026-03-23)**: **GitLab CI** (`.gitlab-ci.yml`) + **`Dockerfile`** — build แยก frontend/backend; พอร์ต host **8404→3000**, **8405→4100**; **`FRONTEND_BASE_URL`**; production โดเมนเดียว + `/api` + `/socket.io`; pipeline ส่ง **`MINIO_SERVER_FETCH_BASE_URL`** เข้า backend เมื่อตั้งใน GitLab Variables — รายละเอียด PRD ใน `README.md`
-- **GitLab CI UAT+PRD (2026-08-05)**: pipeline **`test` → `build` → `deploy_docker`** — branch **`staging`** (UAT `nurdin@192.168.0.115`) / **`main`/`master`** (PRD build `.115` → **`transfer:prd:images`** ด้วย **`DOCKER_HOST_PRD`** + `docker load` → deploy `nurdin@192.168.0.128`); stage **`deploy_docker` ทุก job manual** (`docker_build` / `transfer` / `deploy:*:docker`); **`.deploy_ssh_and_validate`** ตรวจกลุ่ม A ก่อน deploy; แผน [`docs/GitLab-CI-Plan.md`](docs/GitLab-CI-Plan.md) · Variables [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md)
-- **CI hardening (2026-08-06)**: deploy **health check** (container Running + logs); transfer verify ใช้ `export DOCKER_HOST`; **`test:backend`** รัน eslint ห้าม `--fix`; cleanup **`needs`** ไม่รอ manual deploy; docs บังคับ **`prisma migrate deploy`** ก่อนกด deploy ครั้งแรก
+- **GitLab CI UAT+PRD (2026-08-05 → registry 2026-10-27)**: pipeline **`test` → `build` → `deploy_docker`** — branch **`staging`** (UAT `.115`) / **`main`/`master`** (PRD `.128`); **`docker_build:*`** build บน `.115` แล้ว **push** ไป private registry (`REGISTRY_URL` / namespace `dtrs-app`) · **`deploy:*`** **pull+retag** ชื่อสั้นแล้ว run/compose · **ไม่มี** `transfer:prd:images`; stage **`deploy_docker` manual**; กลุ่ม E + `insecure-registries` บน host — [`docs/GitLab-CI-Plan.md`](docs/GitLab-CI-Plan.md) · [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md)
+- **CI hardening (2026-08-06)**: deploy **health check** (container Running + logs); **`test:backend`** รัน eslint ห้าม `--fix`; cleanup **`needs`** → `docker_build:*`; docs บังคับ **`prisma migrate deploy`** ก่อนกด deploy ครั้งแรก
 - **RBAC คิวงาน (2026-03-30)**: `PATCH /jobs/:id/assign`, `PATCH /jobs/:id/out-of-contract`, และลบ `PENDING` ไม่มอบหมายใน **`DELETE /jobs/:id`** ใช้ **`getPermissionsForUser`** สอดคล้อง `/dashboard/roles`; `JobsList` แสดงปุ่มมอบหมาย/ย้ายนอกสัญญาตาม **`job.assign`**
 - **RBAC แท็บสัญญา/นอกสัญญา + บทบาทกำหนดเอง (2026-08-14)**: `JobsList` แสดงแท็บเมื่อมี **`job.viewContractTabs`**; `User.role` เป็น `VARCHAR` (`AppRole.code`) — [`CHANGELOG.md`](CHANGELOG.md), [`backend/docs/RBAC-Setup.md`](backend/docs/RBAC-Setup.md)
 - **ภาพรวม / PDF สรุปตาม `job.viewContractTabs` + UI public (2026-09-04)**: `/dashboard` และ `GET /jobs/reports/summary-pdf` กรองงานนอกสัญญาเมื่อไม่มีสิทธิ์; ลบ watermark CCTV ใน `PublicLayoutShell` และ section placeholder วิเคราะห์อนาคตบนภาพรวม — [`CHANGELOG.md`](CHANGELOG.md), [`backend/docs/RBAC-Setup.md`](backend/docs/RBAC-Setup.md)
@@ -215,9 +215,11 @@ npx ts-node scripts/seed-roles-permissions.ts
 ## 🚀 แผนงานถัดไป (Phase 6)
 
 - [x] ตั้ง GitLab CI/CD Variables กลุ่ม A scope **`staging`** ✅ — [`docs/GitLab-CI-Variables-Checklist.md`](docs/GitLab-CI-Variables-Checklist.md)
-- [ ] **โฟกัส UAT:** `prisma migrate deploy` (DB UAT) → push `staging` → ตรวจ Docker `:2375` บน `.115` → manual `deploy:uat:docker`
-- [ ] ⏸️ **pending:** Variables กลุ่ม A scope **`production`** · NPM — ทำหลัง UAT นิ่ง
-- [x] MinIO กลุ่ม B บน GitLab ✅ (2026-08-06) — ตรวจอัปโหลดหลัง deploy UAT
+- [x] **Gate UAT smoke (2026-10-26):** `http://192.168.0.115:8404` + `:8405/api` — `scripts/docker-regression-smoke.sh` ผ่าน
+- [ ] ตรวจ Docker `:2375` บน `.115` / อัปโหลดรูป UAT ด้วยตา (ถ้ายัง)
+- [x] **PRD prep:** กลุ่ม A + D + `SSH_PRIVATE_KEY` + MinIO PRD (`MINIO_BUCKET_NAME=dtrs-app`) scope **`production`** ✅ (2026-10-27)
+- [ ] **PRD blockers ก่อน deploy:** NPM+DNS `dtrs-app.forth.co.th` · `YES, MIGRATE…` · `YES, DEPLOY production @192.168.0.128` · โฮสต์มี `docker compose` แล้ว (job ใช้ [`docker-compose.prod.yml`](docker-compose.prod.yml))
+- [x] MinIO กลุ่ม B บน GitLab ✅ — host ร่วม UAT/PRD แยก bucket (UAT 2026-10-26 · PRD keys/bucket 2026-10-27)
 - [ ] รัน Seed Script บน **UAT/PRD** (และ seed-admin ถ้ายังไม่มี admin) — **`seed-locations-from-mssql.ts`** เมื่อ Locations ว่าง · **`seed-sites-from-xlsx.ts`** หลัง migration `Site.station`/`Job.agency` (local ✅ 198 แถวแล้ว) — ดู [`docs/Locations-Master-Seed.md`](docs/Locations-Master-Seed.md), [`docs/Sites-Import.md`](docs/Sites-Import.md)
 - [ ] ติดตั้ง Socket.io บน Frontend เพื่อ Real-time Notifications
 - [x] ระบบออกรายงาน PDF / พิมพ์ — ใช้หน้า `/print/jobs/[id]` + เทมเพลต + `print.css` (แทนการดาวน์โหลด html2canvas บนหน้ารายละเอียด); ปรับแต่ง layout เพิ่มเติมทำได้เป็นงานต่อยอด
